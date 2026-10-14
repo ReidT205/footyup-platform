@@ -41,8 +41,9 @@ the whole flow runs without Stripe keys. To use Stripe test mode instead, set
 events with `stripe listen --forward-to localhost:4319/api/stripe/webhook`.
 
 ```bash
-pnpm test        # creates a throwaway database "footyup_test" and runs the acceptance tests
+pnpm test            # creates a throwaway database "footyup_test" and runs the acceptance tests (Node's built-in runner)
 pnpm typecheck
+pnpm licenses:check  # every package, including dev and transitive, must be MIT/Apache/BSD/ISC
 ```
 
 Tests connect as `postgres://footy:footy@localhost:5432/postgres` by default.
@@ -65,8 +66,9 @@ pnpm settings list
 pnpm settings set notify_email '"owner@example.com"'
 ```
 
-Every pending client decision and when it's needed:
-[`docs/open-decisions.md`](docs/open-decisions.md).
+Every pending client decision, the access list and the agreed dates:
+[`docs/open-decisions.md`](docs/open-decisions.md). The real Miami access code is
+never given to the developer; use a test code and Ivy Devs sets the real one.
 
 ## How the important parts work
 
@@ -103,20 +105,33 @@ Names only. Set values in Vercel project settings, never in the repo.
 | `CRON_SECRET` | yes (prod) | Vercel cron auth for `/api/cron/cleanup` |
 | `RATE_LIMIT_SALT` | yes (prod) | Salt for hashing client IPs in rate-limit keys |
 
-## Deploying into the existing site
+## Moving into Ivy Devs' repo and staging
 
-1. Copy `api/`, `src/`, `supabase/`, `scripts/`, `data/` into the site repo. Merge
-   `dependencies` and the `crons` entry from `vercel.json`. The site already uses
-   `stripe`, so check its version: this code targets `stripe@23`.
-2. Create the Supabase project (Pro). Run `supabase link` and `supabase db push`, or
-   `pnpm db:migrate` with `DIRECT_DATABASE_URL`. Then load `pnpm camps:upsert` and `pnpm miami config`.
-3. In the Stripe dashboard (test mode), add a webhook endpoint at
-   `https://<deployment>/api/stripe/webhook` for `checkout.session.completed`,
+Per the Build Agreement, the developer works in Ivy Devs' repo with development
+access only (staging, a Supabase dev project, a Stripe Sandbox, a Brevo test
+account). **Ivy Devs deploys to production and switches the live checkout
+themselves** once Stage 1 passes testing.
+
+1. At kickoff, commit `api/`, `src/`, `supabase/`, `scripts/`, `data/`, `docs/` and
+   `tests/` into their repo. Merge `dependencies`, `devDependencies`, the `scripts`
+   entries and `pnpm-workspace.yaml`, and the `crons` entry from `vercel.json`. The site
+   already uses `stripe`; this code targets `stripe@23`, so align the version.
+2. Supabase dev project: `pnpm db:migrate` with `DIRECT_DATABASE_URL` (or
+   `supabase link` + `supabase db push`), then `pnpm camps:upsert` and `pnpm miami config`.
+3. Stripe Sandbox dashboard: add a webhook endpoint at
+   `https://<staging deployment>/api/stripe/webhook` for `checkout.session.completed`,
    `checkout.session.expired`, `checkout.session.async_payment_succeeded`,
-   `checkout.session.async_payment_failed` and `charge.refunded`.
-4. Set the environment variables above on Vercel (Preview first).
-5. Point the pages at the new endpoints. Leave `api/checkout.js` live until the new
-   flow passes acceptance; payments it creates are still recorded by the webhook.
+   `checkout.session.async_payment_failed` and `charge.refunded`. Keep delayed payment
+   methods (bank debits) off for Miami. The code holds the spot if one is used, but card-only
+   keeps holds short.
+4. Set the environment variables above on Vercel for Preview/staging.
+5. The pages call the new endpoints; `api/checkout.js` stays live until Ivy Devs
+   switches over. Payments it creates are still recorded by the webhook.
+
+For production, Ivy Devs repeats steps 2–4 on their production project and keys.
+Email DNS records (SPF, DKIM, DMARC) are added by Ivy Devs; the developer sends
+the exact values from Brevo. See [`docs/handoff.md`](docs/handoff.md) for
+services, secret names, packages and the handoff checklist.
 
 ## Layout
 
