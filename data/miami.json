@@ -1,0 +1,42 @@
+{
+  "_note": "Miami combine settings. Edit and run `pnpm miami config`. Prices are the two figures from the client call ($1,300 and $1,575) used as placeholders - which one applies to whom is TBC. Dates, opening time, reserved spots, clothing sizes and waiver are TBC.",
+  "camp": {
+    "slug": "miami-combine",
+    "name": "Miami College Exposure Combine",
+    "host": null
+  },
+  "event": {
+    "name": "Miami College Exposure Combine",
+    "startsOn": null,
+    "endsOn": null,
+    "location": null,
+    "infoText": null,
+    "opensAt": null,
+    "checkoutOpen": true,
+    "holdMinutes": 35,
+    "waiverRequired": false,
+    "clothingSizes": []
+  },
+  "groups": [
+    {
+      "grp": "boys",
+      "label": "Boys",
+      "cap": 200,
+      "reservedForCodeHolders": 0,
+      "reservedUntil": null,
+      "priceCodeHolderCents": 157500,
+      "pricePublicCents": 130000,
+      "open": true
+    },
+    {
+      "grp": "girls",
+      "label": "Girls",
+      "cap": 200,
+      "reservedForCodeHolders": 0,
+      "reservedUntil": null,
+      "priceCodeHolderCents": 157500,
+      "pricePublicCents": 130000,
+      "open": true
+    }
+  ]
+}

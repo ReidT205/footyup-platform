@@ -1,0 +1,197 @@
+import { randomUUID } from "node:crypto";
+import Stripe from "stripe";
+
+export interface CheckoutLine {
+  name: string;
+  unitAmountCents: number;
+  quantity: number;
+}
+
+export interface CreateCheckoutInput {
+  intentId: string;
+  flow: "camp" | "miami";
+  lines: CheckoutLine[];
+  customerEmail: string;
+  successUrl: string;
+  cancelUrl: string;
+  expiresAt: Date;
+}
+
+export interface CreatedCheckout {
+  id: string;
+  url: string;
+}
+
+/** The subset of a Stripe event the webhook handler relies on. */
+export interface WebhookEvent {
+  id: string;
+  type: string;
+  data: { object: Record<string, any> };
+}
+
+export interface PaymentsGateway {
+  readonly mode: "stripe" | "mock";
+  createCheckout(input: CreateCheckoutInput): Promise<CreatedCheckout>;
+  expireCheckout(sessionId: string): Promise<void>;
+  verifyWebhook(rawBody: string, signature: string | null): WebhookEvent;
+}
+
+export class WebhookSignatureError extends Error {
+  constructor() {
+    super("Invalid Stripe signature");
+    this.name = "WebhookSignatureError";
+  }
+}
+
+function verifyStripeSignature(stripe: Stripe, rawBody: string, signature: string | null, secret: string): WebhookEvent {
+  if (!signature) throw new WebhookSignatureError();
+  try {
+    return stripe.webhooks.constructEvent(rawBody, signature, secret) as unknown as WebhookEvent;
+  } catch {
+    throw new WebhookSignatureError();
+  }
+}
+
+export class StripeGateway implements PaymentsGateway {
+  readonly mode = "stripe" as const;
+  private readonly stripe: Stripe;
+
+  constructor(
+    secretKey: string,
+    private readonly webhookSecret: string,
+  ) {
+    this.stripe = new Stripe(secretKey, { maxNetworkRetries: 2 });
+  }
+
+  async createCheckout(input: CreateCheckoutInput): Promise<CreatedCheckout> {
+    const metadata = { intent_id: input.intentId, flow: input.flow };
+    const session = await this.stripe.checkout.sessions.create(
+      {
+        mode: "payment",
+        line_items: input.lines.map((line) => ({
+          quantity: line.quantity,
+          price_data: {
+            currency: "usd",
+            unit_amount: line.unitAmountCents,
+            product_data: { name: line.name },
+          },
+        })),
+        customer_email: input.customerEmail,
+        client_reference_id: input.intentId,
+        metadata,
+        payment_intent_data: { metadata },
+        expires_at: Math.floor(input.expiresAt.getTime() / 1000),
+        success_url: input.successUrl,
+        cancel_url: input.cancelUrl,
+      },
+      { idempotencyKey: `checkout-${input.intentId}` },
+    );
+    if (!session.url) throw new Error("Stripe did not return a checkout URL");
+    return { id: session.id, url: session.url };
+  }
+
+  async expireCheckout(sessionId: string): Promise<void> {
+    await this.stripe.checkout.sessions.expire(sessionId);
+  }
+
+  verifyWebhook(rawBody: string, signature: string | null): WebhookEvent {
+    return verifyStripeSignature(this.stripe, rawBody, signature, this.webhookSecret);
+  }
+}
+
+interface MockSession {
+  id: string;
+  input: CreateCheckoutInput;
+  amountTotal: number;
+  paymentIntentId: string;
+  status: "open" | "complete" | "expired";
+}
+
+/**
+ * Local stand-in for Stripe Checkout. Signs its webhook events with the same
+ * algorithm Stripe uses, so the real verification path runs end to end.
+ * Refused in production by loadEnv().
+ */
+export class MockGateway implements PaymentsGateway {
+  readonly mode = "mock" as const;
+  readonly sessions = new Map<string, MockSession>();
+  private readonly stripe = new Stripe("sk_test_mock_gateway_not_a_real_key");
+  failNextCheckout = false;
+
+  constructor(
+    private readonly siteUrl: string,
+    readonly webhookSecret: string,
+  ) {}
+
+  async createCheckout(input: CreateCheckoutInput): Promise<CreatedCheckout> {
+    if (this.failNextCheckout) {
+      this.failNextCheckout = false;
+      throw new Error("Mock payment provider failure");
+    }
+    const id = `cs_mock_${randomUUID().replaceAll("-", "")}`;
+    const amountTotal = input.lines.reduce((sum, l) => sum + l.unitAmountCents * l.quantity, 0);
+    this.sessions.set(id, { id, input, amountTotal, paymentIntentId: `pi_mock_${randomUUID().replaceAll("-", "")}`, status: "open" });
+    return { id, url: `${this.siteUrl}/__mock/checkout/${id}` };
+  }
+
+  async expireCheckout(sessionId: string): Promise<void> {
+    const s = this.sessions.get(sessionId);
+    if (s) s.status = "expired";
+  }
+
+  verifyWebhook(rawBody: string, signature: string | null): WebhookEvent {
+    return verifyStripeSignature(this.stripe, rawBody, signature, this.webhookSecret);
+  }
+
+  sessionObject(sessionId: string): Record<string, any> {
+    const s = this.sessions.get(sessionId);
+    if (!s) throw new Error(`Unknown mock session ${sessionId}`);
+    return {
+      id: s.id,
+      object: "checkout.session",
+      status: s.status,
+      payment_status: s.status === "complete" ? "paid" : "unpaid",
+      amount_subtotal: s.amountTotal,
+      amount_total: s.amountTotal,
+      total_details: { amount_discount: 0 },
+      currency: "usd",
+      payment_intent: s.status === "complete" ? s.paymentIntentId : null,
+      client_reference_id: s.input.intentId,
+      metadata: { intent_id: s.input.intentId, flow: s.input.flow },
+      customer_details: { email: s.input.customerEmail },
+    };
+  }
+
+  /** Builds a signed webhook delivery: { body, signature }. */
+  signedEvent(type: string, object: Record<string, any>, eventId = `evt_mock_${randomUUID().replaceAll("-", "")}`) {
+    const body = JSON.stringify({ id: eventId, object: "event", type, data: { object } });
+    const signature = this.stripe.webhooks.generateTestHeaderString({ payload: body, secret: this.webhookSecret });
+    return { body, signature, eventId };
+  }
+
+  complete(sessionId: string) {
+    const s = this.sessions.get(sessionId);
+    if (!s) throw new Error(`Unknown mock session ${sessionId}`);
+    s.status = "complete";
+    return this.signedEvent("checkout.session.completed", this.sessionObject(sessionId));
+  }
+
+  expire(sessionId: string) {
+    const s = this.sessions.get(sessionId);
+    if (!s) throw new Error(`Unknown mock session ${sessionId}`);
+    s.status = "expired";
+    return this.signedEvent("checkout.session.expired", this.sessionObject(sessionId));
+  }
+
+  refund(sessionId: string, amountRefundedCents: number) {
+    const s = this.sessions.get(sessionId);
+    if (!s) throw new Error(`Unknown mock session ${sessionId}`);
+    return this.signedEvent("charge.refunded", {
+      id: `ch_mock_${s.id.slice(8)}`,
+      object: "charge",
+      amount: s.amountTotal,
+      amount_refunded: amountRefundedCents,
+      payment_intent: s.paymentIntentId,
+    });
+  }
+}
