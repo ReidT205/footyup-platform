@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { campCheckout } from "../src/handlers/camp-checkout.js";
-import { call, deliver, makeDeps, parent, post, resetDb, seed, sessionBySlug, sessionIdFrom } from "./helpers.js";
+import { call, countRows, deliver, makeDeps, parent, post, resetDb, seed, sessionBySlug, sessionIdFrom } from "./helpers.js";
 
 const deps = makeDeps();
 const { db } = deps;
@@ -26,8 +26,7 @@ describe("Stripe webhook (acceptance #1, #2)", () => {
     expect(await first.json()).toMatchObject({ result: "registered" });
     expect(await second.json()).toMatchObject({ result: "duplicate" });
 
-    const [{ count }] = await db`select count(*)::int as count from public.registrations`;
-    expect(count).toBe(1);
+    expect(await countRows(db, "registrations")).toBe(1);
   });
 
   it("is idempotent under simultaneous duplicate deliveries and distinct events for the same session", async () => {
@@ -36,8 +35,7 @@ describe("Stripe webhook (acceptance #1, #2)", () => {
     const other = deps.payments.signedEvent("checkout.session.async_payment_succeeded", deps.payments.sessionObject(sessionId));
     const results = await Promise.all([deliver(deps, delivery), deliver(deps, delivery), deliver(deps, other)]);
     expect(results.every((r) => r.status === 200)).toBe(true);
-    const [{ count }] = await db`select count(*)::int as count from public.registrations`;
-    expect(count).toBe(1);
+    expect(await countRows(db, "registrations")).toBe(1);
   });
 
   it("clears the stored form payload once registrations exist", async () => {
@@ -69,8 +67,7 @@ describe("Stripe webhook (acceptance #1, #2)", () => {
     expect(forged.status).toBe(400);
     const tampered = await deliver(deps, { body: delivery.body.replace("50000", "1"), signature: delivery.signature });
     expect(tampered.status).toBe(400);
-    const [{ count }] = await db`select count(*)::int as count from public.registrations`;
-    expect(count).toBe(0);
+    expect(await countRows(db, "registrations")).toBe(0);
   });
 
   it("releases holds when Stripe reports the session expired", async () => {

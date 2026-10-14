@@ -37,6 +37,11 @@ export async function seed(db: Sql) {
   await upsertMiami(db, MiamiFile.parse(JSON.parse(readFileSync("data/miami.json", "utf8"))));
 }
 
+export async function countRows(db: Sql, table: string) {
+  const [row] = await db.unsafe<{ n: number }[]>(`select count(*)::int as n from public.${table}`);
+  return row!.n;
+}
+
 export function randomIp() {
   return `10.${randomInt(255)}.${randomInt(255)}.${randomInt(255)}`;
 }

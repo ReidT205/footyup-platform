@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { privateTraining } from "../src/handlers/private-training.js";
 import { joinWaitlist } from "../src/handlers/waitlist.js";
-import { call, makeDeps, post, resetDb, seed, sessionBySlug } from "./helpers.js";
+import { call, countRows, makeDeps, post, resetDb, seed, sessionBySlug } from "./helpers.js";
 
 const deps = makeDeps();
 const { db } = deps;
@@ -42,8 +42,7 @@ describe("POST /api/private-training (acceptance #6)", () => {
   it("silently drops a scripted submission that fills the honeypot", async () => {
     const res = await call(deps, privateTraining, post("/api/private-training", { ...request, website: "http://spam.example" }));
     expect(res.status).toBe(201);
-    const [{ count }] = await db`select count(*)::int as count from public.private_training_requests`;
-    expect(count).toBe(0);
+    expect(await countRows(db, "private_training_requests")).toBe(0);
   });
 
   it("rate-limits repeated submissions from one address", async () => {

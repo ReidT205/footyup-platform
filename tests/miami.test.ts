@@ -92,8 +92,8 @@ describe("caps and holds (acceptance #5)", () => {
       ),
     );
     expect(attempts.filter((a) => a.status === "fulfilled")).toHaveLength(25);
-    const [{ held }] = await db`select sum(quantity)::int as held from public.holds where status = 'active'`;
-    expect(held).toBe(25);
+    const [holds] = await db`select sum(quantity)::int as held from public.holds where status = 'active'`;
+    expect(holds!.held).toBe(25);
   });
 
   it("an abandoned checkout releases its hold when the session expires", async () => {
