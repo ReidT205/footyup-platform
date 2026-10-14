@@ -1,4 +1,5 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { before, describe, it } from "node:test";
+import { expect } from "./expect.js";
 import { campCheckout } from "../src/handlers/camp-checkout.js";
 import { privateTraining } from "../src/handlers/private-training.js";
 import type { Db } from "../src/lib/db.js";
@@ -19,7 +20,7 @@ async function asRole<T>(role: "anon" | "authenticated", userId: string | null, 
   }) as Promise<T>;
 }
 
-beforeAll(async () => {
+before(async () => {
   await resetDb(db);
   await seed(db);
   const week1 = await sessionBySlug(db, "arlington-catholic", "week-of-july-12");

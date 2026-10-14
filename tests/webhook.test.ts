@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, it } from "node:test";
+import { expect } from "./expect.js";
 import { campCheckout } from "../src/handlers/camp-checkout.js";
 import { call, countRows, deliver, makeDeps, parent, post, resetDb, seed, sessionBySlug, sessionIdFrom } from "./helpers.js";
 

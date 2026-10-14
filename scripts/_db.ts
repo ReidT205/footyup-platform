@@ -1,4 +1,4 @@
-import postgres from "postgres";
+import { createSql } from "../src/lib/db.js";
 
 /** Scripts prefer the direct (non-pooled) connection when one is configured. */
 export function scriptDb() {
@@ -7,7 +7,7 @@ export function scriptDb() {
     console.error("Set DATABASE_URL (or DIRECT_DATABASE_URL) in .env first. See .env.example.");
     process.exit(1);
   }
-  return postgres(url, { max: 1, onnotice: () => {} });
+  return createSql(url, { max: 1 });
 }
 
 export function flag(args: string[], name: string): string | undefined {

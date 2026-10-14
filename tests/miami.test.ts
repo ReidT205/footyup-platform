@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, it } from "node:test";
+import { expect } from "./expect.js";
 import { miamiCheckout, miamiStatus, miamiVerifyCode } from "../src/handlers/miami.js";
 import type { MiamiStatusResponse } from "../src/contract.js";
 import { cleanup } from "../src/handlers/cleanup.js";

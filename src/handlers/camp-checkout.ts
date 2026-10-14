@@ -33,7 +33,7 @@ export async function campCheckout(req: Request, deps: Deps): Promise<Response> 
            c.id as camp_id, c.name as camp_name, c.kind as camp_kind, c.info_only, c.active as camp_active
       from public.sessions s
       join public.camps c on c.id = s.camp_id
-     where s.id in ${db(sessionIds)}`;
+     where s.id = any(${sessionIds}::uuid[])`;
   const byId = new Map(rows.map((r) => [r.id, r]));
 
   const missing = sessionIds.filter((id) => {

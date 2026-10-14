@@ -57,10 +57,8 @@ export function clientIp(req: Request): string {
  * messages and details can echo row values, which may include personal data.
  */
 export function logError(scope: string, err: unknown): void {
-  const e = err as { name?: string; code?: string; constraint_name?: string; type?: string };
-  console.error(
-    JSON.stringify({ level: "error", scope, name: e?.name ?? typeof err, code: e?.code, constraint: e?.constraint_name, type: e?.type }),
-  );
+  const e = err as { name?: string; code?: string; constraint?: string; type?: string };
+  console.error(JSON.stringify({ level: "error", scope, name: e?.name ?? typeof err, code: e?.code, constraint: e?.constraint, type: e?.type }));
 }
 
 export function errorResponse(err: unknown, scope: string): Response {

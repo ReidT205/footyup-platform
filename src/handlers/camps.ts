@@ -47,7 +47,7 @@ export async function listCamps(_req: Request, deps: Deps): Promise<Response> {
                case when s.capacity is null then 0 else public.session_taken(s.id) end as taken,
                s.info_text
           from public.sessions s
-         where s.camp_id in ${db(camps.map((c) => c.id))}
+         where s.camp_id = any(${camps.map((c) => c.id)}::uuid[])
          order by s.sort_order, s.starts_on nulls last, s.name`
     : [];
 

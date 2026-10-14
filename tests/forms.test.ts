@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, it } from "node:test";
+import { expect } from "./expect.js";
 import { privateTraining } from "../src/handlers/private-training.js";
 import { joinWaitlist } from "../src/handlers/waitlist.js";
 import { call, countRows, makeDeps, post, resetDb, seed, sessionBySlug } from "./helpers.js";

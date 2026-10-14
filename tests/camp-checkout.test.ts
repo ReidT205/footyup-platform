@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, it } from "node:test";
+import { expect } from "./expect.js";
 import { campCheckout } from "../src/handlers/camp-checkout.js";
 import { listCamps } from "../src/handlers/camps.js";
 import type { CampsResponse } from "../src/contract.js";
