@@ -5,12 +5,13 @@ brief asks for this to be agreed in the first two days. TypeScript types and
 validation for every shape below live in [`src/contract.ts`](../src/contract.ts);
 the front end can copy that file to get the same types.
 
-**Status: DRAFT v0.1.** Anything here can change until both sides sign off.
+**Status: DRAFT v0.2** (Miami updated from the client Kickoff Form, Oct 28). Anything here can change until both sides sign off.
 After that, changes are additive only (new optional fields), or agreed in writing.
 
 ## Conventions
 
-- All endpoints are same-origin under `/api` on the Vercel project. Bodies are JSON.
+- All endpoints live under `/api`. Bodies are JSON. If the pages are served from a different
+  domain than the API, add that domain to `CORS_ALLOWED_ORIGINS` and the API will accept browser calls from it.
 - Money is integer **cents** (USD). Dates are `YYYY-MM-DD`; times are ISO 8601.
 - Successful checkouts return `{ checkoutUrl, expiresAt }`. The page redirects
   the browser to `checkoutUrl` (Stripe Checkout). The parent's spot is held until `expiresAt`.
@@ -102,44 +103,72 @@ Returns `200 { "checkoutUrl": "...", "expiresAt": "..." }`.
 
 ## Miami combine (D3)
 
+Fields and schedule follow the client's Kickoff Information Form (Oct 18, 2026).
+
+**Phases.** `opensAt` → checkout opens (code holders included). `publicOpensAt` →
+families without a code can register; the code becomes optional and unlocks the
+host-school reserved spots. `closesAt` → checkout closes. Current settings:
+opens to everyone **Nov 1, 2026 10:00 AM ET**, closes **Mar 1, 2027**.
+
 ### `GET /api/miami`
 
 ```json
 {
-  "event": { "name": "...", "startsOn": null, "endsOn": null, "location": null, "infoText": null, "opensAt": null, "open": true },
-  "accessCodeRequired": true,
-  "clothingSizes": ["YL", "S", "M", "L", "XL"],
-  "waiver": { "id": "uuid", "version": 1, "title": "...", "body": "...", "url": null },
-  "waiverRequired": true,
+  "event": {
+    "name": "FOOTYUP x GOINGFORGOAT College Combine",
+    "location": "Miami, FL",
+    "infoText": "Players will participate in an elite three-day college soccer combine...",
+    "opensAt": "2026-11-01T15:00:00.000Z",
+    "publicOpensAt": "2026-11-01T15:00:00.000Z",
+    "closesAt": "2027-03-02T04:59:00.000Z",
+    "open": true,
+    "publicOpen": true
+  },
+  "accessCodeRequired": false,
+  "accessCodeAccepted": true,
+  "options": { "positions": [], "shirtSizes": [], "shortSizes": [] },
+  "waiver": null,
+  "waiverRequired": false,
   "groups": [
-    { "group": "boys", "label": "Boys", "priceCents": 157500, "spotsLeft": 143, "full": false, "open": true },
-    { "group": "girls", "label": "Girls", "priceCents": 157500, "spotsLeft": 0, "full": true, "open": true }
+    { "group": "boys", "label": "Boys", "priceCents": 150000, "spotsLeft": 25, "full": false, "open": true,
+      "startsOn": "2027-05-21", "endsOn": "2027-05-23", "dailyStartTime": "16:30", "dailyEndTime": "20:30" },
+    { "group": "girls", "label": "Girls", "priceCents": 150000, "spotsLeft": 0, "full": true, "open": true,
+      "startsOn": "2027-05-24", "endsOn": "2027-05-26", "dailyStartTime": "16:30", "dailyEndTime": "20:30" }
   ]
 }
 ```
 
-- `accessCodeRequired` flips to `false` when the client turns off the code or its end date passes. The page should then hide the code field.
-- `full: true` means the page should offer the waitlist instead of checkout.
-- An empty `clothingSizes` means free text is accepted.
+- `accessCodeRequired: true` means a code is mandatory right now, so show the code field and block the form without one.
+- `accessCodeAccepted: true` with `accessCodeRequired: false` means the code is optional. Show an
+  optional "Host-school access code" field. Host families who enter it can use the reserved spots.
+- `spotsLeft` is what a family **without** a code can take. Host families get their numbers from verify-code.
+- `full: true` means the page should offer the waitlist (`POST /api/waitlist` with `miamiGroup`).
+- Empty option lists mean free text. When the client supplies lists, show dropdowns. The server enforces them.
+- `event.open: false` means show "opens on…" or "closed" using `opensAt` / `closesAt`.
 - This response is cached at the edge for 5 seconds. The checkout itself always re-checks capacity.
 
 ### `POST /api/miami/verify-code`
 
-Optional step so the page can confirm a code and show code-holder pricing before the form.
-The request is `{ "accessCode": "..." }`. It returns `200 { "valid": true, "groups": [...] }` or
-`403 access_code_invalid`, and allows 10 attempts per 10 minutes per IP.
+Optional step so the page can confirm a code before the form. The request is `{ "accessCode": "..." }`.
+It returns `200 { "valid": true, "groups": [...] }` (spots open to code holders) or `403 access_code_invalid`, and
+allows 10 attempts per 10 minutes per IP.
 
 ### `POST /api/miami/checkout`
 
 ```json
 {
-  "accessCode": "only while accessCodeRequired is true",
-  "parent": { "name": "...", "email": "...", "phone": "...", "town": "..." },
+  "accessCode": "optional; required only while accessCodeRequired is true",
+  "parent": {
+    "firstName": "Jamie", "lastName": "Rivera",
+    "email": "jamie@example.com", "phone": "617-555-0142", "emergencyPhone": "617-555-0177"
+  },
+  "shippingAddress": { "line1": "1 Main St", "line2": "Apt 2", "city": "Miami", "state": "FL", "postalCode": "33156" },
   "players": [
     {
-      "name": "Player Name", "age": 16, "sex": "girl",
-      "heightIn": 66, "weightLb": 130, "email": "player@example.com", "clothingSize": "M",
-      "shippingAddress": { "line1": "1 Main St", "line2": "Apt 2", "city": "Miami", "state": "FL", "postalCode": "33156" }
+      "firstName": "Avery", "lastName": "Rivera", "age": 16, "sex": "girl",
+      "heightIn": 66, "weightLb": 130,
+      "position": "Midfielder", "club": "Miami FC Academy",
+      "email": "avery@example.com", "shirtSize": "M", "shortSize": "S"
     }
   ],
   "waiver": { "waiverId": "...", "acceptedName": "..." },
@@ -149,11 +178,15 @@ The request is `{ "accessCode": "..." }`. It returns `200 { "valid": true, "grou
 }
 ```
 
+- Every field above is required except `accessCode`, `line2`, `waiver` (until a waiver is published), `marketingOptIn` and the paths.
 - `sex` sets the group (`boy` → boys, `girl` → girls). 1–4 players per checkout.
-- Height is in **inches** and weight in **pounds** (whole numbers). The page can collect feet+inches and convert.
-- The code is checked on the server only, ignoring case and spaces.
+- `shippingAddress` is where the GOINGFORGOAT x FOOTYUP package ships. A player can override it with their own `shippingAddress`.
+- `parent.town` is optional; the shipping city is used when it's missing.
+- Height is in **inches** and weight in **pounds** (whole numbers). The page can collect feet and inches and convert.
+- The code is checked on the server only, ignoring case and spaces. A wrong code is refused even when the code is optional.
 - Possible errors: `403 access_code_required | access_code_invalid`, `409 group_full`
-  (`details.group`), `409 registration_not_open` (`details.opensAt`), `503 pricing_not_configured`, `422 waiver_required`.
+  (`details.group`), `409 registration_not_open` (`details.opensAt`, `details.closesAt`), `503 pricing_not_configured`,
+  `422 waiver_required`, `400 validation_failed` (per-field `details.issues`).
 
 ## Forms
 

@@ -20,7 +20,8 @@
     "admins": "tsx --env-file-if-exists=.env scripts/admins.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p admin",
     "licenses:check": "tsx scripts/check-licenses.ts",
-    "test": "tsx tests/setup-db.ts && node --import tsx --test --test-concurrency=1 tests/*.test.ts"
+    "test": "tsx tests/setup-db.ts && node --import tsx --test --test-concurrency=1 tests/*.test.ts",
+    "demo:data": "tsx scripts/demo-data.ts"
   },
   "dependencies": {
     "pg": "^8.23.1",

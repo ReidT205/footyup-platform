@@ -1,68 +1,72 @@
 # Open decisions, access and dates
 
-Matches the signed Build Agreement (Oct 13, 2026). Every undecided item is a
-setting, so none of them blocks the build. What each one blocks is going live.
+Sources, in priority order: the client's **Kickoff Information Form** (Alex Rapo,
+Oct 18, 2026), the signed Build Agreement (Oct 13), and the Developer Brief.
+Every undecided item is a setting, so none blocks the build.
 
-## Key dates (Agreement §2)
+## Dates
 
-| Date | What happens |
-| --- | --- |
-| Fri, Oct 16 | Agreement signed, wire details sent |
-| Sat, Oct 17 | Kickoff: all access given, first $500, start committing to Ivy Devs' repo daily |
-| Mon, Oct 19 | Fake sample of the contact list arrives |
-| Fri, Oct 23 | Client mailing address and waiver wording arrive |
-| Mon, Oct 26 | Logo and brand assets arrive |
-| Oct 28 – Nov 8 | Be reachable, reply within 12 hours |
-| Sat, Oct 31 | Everything finished (all three stages) with handoff |
-| Sun, Nov 1 | Stage 1 done and tested; Miami registration opens |
+| Date | What happens | Source |
+| --- | --- | --- |
+| Wed, Oct 28 | Stage 1 Checklist sent to the client (commitment) | Kickoff Form |
+| Fri, Oct 30 | Stage 1 finished (target) | Kickoff Form |
+| Sat, Oct 31 | Everything finished with handoff | Build Agreement |
+| **Sun, Nov 1, 10:00 AM ET** | Miami registration opens; Alex and Chris can log in to view registrations (commitment) | Kickoff Form |
+| Fri, Nov 13 | Stage 2 target (dashboard, contact import, email sending) | Kickoff Form |
+| Fri, Nov 27 | Stage 3 target and written handoff guide | Kickoff Form |
+| Mon, Mar 1, 2027 | Miami registration closes | Kickoff Form |
 
-If Ivy Devs is late with access or info and you tell them within a day, your
-dates move by the same amount (§2). Tell them about any blocker within a day (§11).
+The Build Agreement (developer ↔ Ivy Devs) says everything by Oct 31. The
+Kickoff Form (Ivy Devs ↔ client) gives Nov 13 / Nov 27 targets. Confirm with
+Viraj which dates bind the developer.
 
-## Client decisions
+## Decided by the Kickoff Form (now in `data/`)
 
-| Item | Built as | How to change | Value now | Needed by |
+| Item | Value | Where |
+| --- | --- | --- |
+| Miami price | $1,500 for everyone (public and host-school families) | `data/miami.json` |
+| Boys dates | May 21–23, 2027, 4:30–8:30 PM | `data/miami.json` |
+| Girls dates | May 24–26, 2027, 4:30–8:30 PM | `data/miami.json` |
+| Opens to everyone | Nov 1, 2026, 10:00 AM ET | `opensAt`, `publicOpensAt` |
+| Closes | Mar 1, 2027 (set to 11:59 PM ET) | `closesAt` |
+| Reserved for host-school families | 200 (one pool across both groups) | `reservedTotal` |
+| Miami fields | Split names, age, height, weight, position, club, player email, shirt and short size; parent names, phone, email, emergency phone; shipping street, apt, city, state, ZIP | `src/contract.ts` |
+| Description | "FOOTYUP x GOINGFORGOAT College Combine" text | `data/miami.json` |
+| Arlington Catholic | July 12: ages 6–13, $500 · July 19: ages 14–18, $750 | `data/camps.json` |
+| Watertown | $425, "both weeks" | `data/camps.json` (hidden until dates arrive) |
+| Contact list | "Don't need right now" | Stage 2 |
+| Chris's full name | Chris Calden | — |
+
+## Still open: questions for Viraj and the client
+
+| # | Question | Built as | Current value | Needed by |
 | --- | --- | --- | --- | --- |
-| Miami price(s) | `miami_groups.price_code_holder_cents` / `price_public_cents`, per group | `data/miami.json` → `pnpm miami config` | test values $1,575 / $1,300 | Nov 1. Checkout returns `pricing_not_configured` if unset. |
-| Miami dates, location, wording | `miami_event` | same | empty | Nov 1 (display only) |
-| Registration opening time | `miami_event.opens_at` | same | not set (open) | Nov 1 |
-| Access code | `access_codes` (hashed) | `pnpm miami code add <code>` | test code only | **Never given to the developer (§4).** Ivy Devs adds the real code with the same command. |
-| Code removal date | `access_codes.ends_at` | `pnpm miami code end-at <time>` or `code off` | — | Whenever the client decides. No deploy. |
-| Reserved spots per group | `miami_groups.reserved_for_code_holders` (+ optional `reserved_until`) | `data/miami.json` | 0 | Nov 1 |
-| Caps | `miami_groups.cap` | `data/miami.json` | 200 / 200 | Confirmed |
-| Clothing sizes | `miami_event.clothing_sizes` | `data/miami.json` | free text | Nov 1 |
-| Waiver wording | `waivers` (versioned, immutable) | `pnpm waiver add ...` | none | Arrives Oct 23. Until then registrations are stored as `waiver_status = not_collected`. |
-| Arlington Catholic week ↔ price | per-session `price_cents` | `data/camps.json` → `pnpm camps:upsert` | week 1 = 6–13/$500, week 2 = 14–18/$750 | Before AC registration opens |
-| Watertown, Dover, other camps | rows in `camps` / `sessions` | `data/camps.json` | Watertown hidden | Any time |
-| Private training notify address | setting `notify_email` | `pnpm settings set notify_email '"x@y.com"'` | none (no email sent) | Before Stage 1 testing |
-| Existing camp form fields | `CampPlayer` + `extra` | contract change | brief's list + `extra` | In the existing code (§11). Read on Oct 17 and lock the contract in the first two days. |
-| Consent of imported contacts | `contacts.consent` (`unknown` by default) | Stage 2 import | `unknown` | Stage 2 |
-| Mailing address (email footer) | setting `mailing_address` | `pnpm settings set ...` | none | Arrives Oct 23 |
-| Logo, colors, fonts | email templates | Stage 3 | — | Arrives Oct 26 |
-| Contact list | `contacts` import | Stage 2 | — | Fake sample Oct 19. **Ivy Devs runs the real import (§11).** |
-| Two admin emails | `admin_users` | Stage 2 | — | Stage 2 |
-| Waitlist hold length, reminder timing, discounts | config values | Stage 3 | 48h / 7d+1d / — | Stage 3 |
+| 1 | **Spot limits.** The form says "out of all 450" and offers "250 boys / 250 girls", but neither box is ticked. Is it 225/225, 250/250, or something else? | `groups[].cap` | 225 / 225 | Nov 1 |
+| 2 | **Reserved 200.** Shared across boys and girls (as built), or split (e.g. 100/100)? Are unused reserved spots ever released to the public, and when? | `reservedTotal` / per-group `reservedForCodeHolders`, `reservedUntil` | 200 shared, held until close | Nov 1 |
+| 3 | **Early access.** Can host-school families register before 10:00 AM Nov 1? If yes, from when? | `opensAt` (earlier than `publicOpensAt`) | Same time as public | Nov 1 |
+| 4 | **Location** (host school or venue) to show on the page | `event.location` | "Miami, FL" | Nov 1 |
+| 5 | **Size and position options.** Shirt and short sizes (youth/adult?), positions list, or free text | `shirtSizes`, `shortSizes`, `positions` | Free text | Nov 1 (apparel orders) |
+| 6 | **Chris's email** for his dashboard invite | `pnpm admins add` | — | Nov 1 |
+| 7 | **Who receives private training emails** | setting `notify_email` | — | Nov 1 |
+| 8 | **Waiver wording** (promised Oct 23) | `pnpm waiver add` | None: registrations flagged "not collected" | Nov 1 if possible |
+| 9 | **Watertown** week dates, and is $425 per week? Bookable together? | `data/camps.json` | Hidden | Before Watertown opens |
+| 10 | Arlington Catholic daily start time and session info text | `data/camps.json` | 9:00 AM placeholder | Before AC opens |
+| 11 | Ages accepted for Miami | `MiamiPlayer.age` | 10–20 | Nov 1 |
+| 12 | Business mailing address and how contacts agreed to be emailed (Section D blank) | settings | — | Stage 2 |
 
-## Access (Agreement §8)
+## Accounts (Kickoff Form, Section A)
 
-The developer gets development access only, all on Sat, Oct 17:
+| Account | Status from the form | What it means |
+| --- | --- | --- |
+| Vercel "FootyUP" | Pro and invites not ticked | Need an invite to the FootyUP team to deploy |
+| Supabase "FootyUP" | Invite "won't work"; the form contains a login password instead | **Don't use the password** (Build Agreement §8–9 and the form itself say never share passwords). Ask Alex to retry the invite or have Viraj create the project and invite you. The password should be changed. |
+| Brevo "FootyUP" | Same | Same: needs an invite; the password should be changed |
+| Stripe "footyup" | Invite not ticked | Need a Stripe team invite (test mode for Stage 1) |
+| Domain | Registrar not filled in | Ivy Devs adds DNS records (Build Agreement §4) |
 
-| Access | Used for |
-| --- | --- |
-| Ivy Devs' repo | All code. Commit daily; keep no private copies after the job. |
-| Staging (Vercel) | Preview deploys, env vars for staging, cron |
-| Supabase **dev** project | Migrations and testing with fake data |
-| Stripe **Sandbox** | Its own dashboard: create the `/api/stripe/webhook` endpoint and signing secret, run test payments and refunds |
-| Brevo **test** account | Private training notifications (Stage 1) and campaign/transactional email work |
+The access code was written into the form. Per the Build Agreement the developer
+never handles the real code: Ivy Devs sets it with `pnpm miami code add`. It isn't in this repo.
 
-Not given, by design: production or live access, live Stripe keys, production
-database keys, domain or DNS logins. **Ivy Devs deploys to production and adds
-DNS records themselves.** The developer sends them the exact SPF, DKIM and DMARC
-records from Brevo's domain-authentication screen (Stage 2). They won't switch the
-live checkout until Stage 1 passes testing.
+## Who to ask
 
-## Who to ask (Agreement §11)
-
-Viraj first, Ishan as backup. Send updates at least twice a week. Note: the
-reply time ("[4 business hours]") and update frequency ("[twice a week]") are
-still bracketed placeholders in the signed copy.
+Viraj Shah (781-468-8645), Ishan as backup.

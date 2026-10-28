@@ -30,6 +30,10 @@ Never in the repo.
 | `BREVO_API_KEY` | Brevo → SMTP & API → API keys |
 | `EMAIL_FROM`, `EMAIL_FROM_NAME` | Chosen sender (must be verified in Brevo) |
 | `TURNSTILE_SECRET_KEY` | Cloudflare → Turnstile (optional) |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Supabase → Project Settings → API (URL and publishable/anon key) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API (secret key). Scripts only, never on Vercel |
+| `PUBLIC_ADMIN_URL` | The deployed dashboard URL, e.g. `https://<api domain>/admin/` |
+| `CORS_ALLOWED_ORIGINS` | The public site's domains, comma-separated |
 | `CRON_SECRET` | Any long random string; Vercel sends it to cron routes |
 | `RATE_LIMIT_SALT` | Any long random string |
 
@@ -45,13 +49,16 @@ All permissive licenses, as the Agreement (§4) requires. Check any time with
 | `zod` | MIT | Request validation |
 | `typescript` (dev) | Apache-2.0 | Type checking |
 | `tsx` (dev) | MIT | Running TypeScript scripts and tests |
-| `@types/node`, `@types/pg` (dev) | MIT | Type definitions |
+| `react`, `react-dom` (dev, bundled) | MIT | Admin dashboard |
+| `esbuild` (dev) | MIT | Bundling the admin dashboard |
+| `@types/node`, `@types/pg`, `@types/react`, `@types/react-dom` (dev) | MIT | Type definitions |
 
 Tests use Node's built-in test runner, so no extra test framework is installed.
 
 ## How to
 
-Until the Stage 2 dashboard exists, these run from a terminal with `DIRECT_DATABASE_URL` set.
+Viewing registrations, Miami spots, training requests and the waitlist happens in the dashboard at `/admin`.
+Until Stage 2 adds editing to the dashboard, changes run from a terminal with `DIRECT_DATABASE_URL` set.
 
 | Task | Command |
 | --- | --- |
@@ -63,6 +70,9 @@ Until the Stage 2 dashboard exists, these run from a terminal with `DIRECT_DATAB
 | See spots left | `pnpm miami status` |
 | Publish waiver wording | `pnpm waiver add --flow miami --title "..." --file waiver.txt` |
 | Change who gets private training emails | `pnpm settings set notify_email '"owner@example.com"'` |
+| Give someone dashboard access | `pnpm admins add <email>` (sends an invite) |
+| Remove dashboard access | `pnpm admins remove <email>` |
+| Export registrations | Dashboard → Registrations → filter → Export CSV |
 | Import contacts | *Stage 2* |
 | Send a campaign | *Stage 2* |
 | Create a promo code | *Stage 3* |

@@ -148,10 +148,15 @@ td.wrap { white-space: normal; min-width: 220px; max-width: 360px; }
   .filters > :first-child { grid-column: 1 / -1; }
 }
 @media (max-width: 720px) {
-  .topbar-inner { padding: 0 12px; gap: 12px; }
+  .topbar-inner { padding: 8px 12px 0; gap: 8px 12px; height: auto; flex-wrap: wrap; justify-content: space-between; }
+  .tabs { order: 3; flex-basis: 100%; }
+  .tab { height: 44px; }
   .brand span:last-child, .user span { display: none; }
   .main { padding: 16px 12px; }
-  .grid-2, .grid-4 { grid-template-columns: 1fr; }
+  .grid-2 { grid-template-columns: 1fr; }
+  .grid-4 { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { padding: 14px; }
+  .stat-value { font-size: 22px; }
   .filters { grid-template-columns: 1fr; }
   .kv { grid-template-columns: 1fr 1fr; }
   .details { grid-template-columns: 1fr; }

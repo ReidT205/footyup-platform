@@ -1,149 +1,158 @@
-# Footy Up registration backend
+# Footy Up registration platform
 
-The backend for the Footy Up registration platform: the database, the Vercel
-serverless functions behind checkout and the site forms, the Stripe webhook,
-and admin scripts. The public pages are built separately (by Ivy Devs) and call
-these endpoints. See [`docs/api-contract.md`](docs/api-contract.md).
+The back end and admin dashboard for Footy Up's registrations: the database,
+the serverless API behind camp checkout, the Miami combine checkout and the
+private training form, the Stripe webhook, and the dashboard where Alex and
+Chris view registrations. The public pages are built by Ivy Devs and call this
+API. See [`docs/api-contract.md`](docs/api-contract.md).
 
-Built to drop into the existing React + Vite site on Vercel. The new endpoints
-use their own paths, so the live `api/checkout.js` keeps working untouched until
-the pages are switched over.
+Requirements come from the Developer Brief, with the client's **Kickoff
+Information Form (Oct 18, 2026)** taking priority where they differ.
 
-## What's here
+## Status
 
-| Deliverable | Status |
+| Piece | Status |
 | --- | --- |
-| Schema for all three stages (camps, sessions, Miami settings, access codes, holds, payments, registrations, waitlists, waivers, promo codes, contacts, email log) | Done, in `supabase/migrations/` |
-| Row Level Security, default-deny, two-admin model | Done and tested |
-| **D1** Stripe webhook: signature check, idempotent saving, refunds, expired sessions, legacy sessions | Done and tested |
-| **D2** Camp checkout: camps/sessions as data, several kids and sessions per payment, info-only camps, optional capacity, early-bird price | Done and tested |
-| **D3** Miami checkout: server-side access code, 200/200 caps enforced atomically, holds released on expiry, reserved allotment, configurable prices and dates | Done and tested |
-| **D4** Private training endpoint: validation, honeypot, rate limiting, optional Turnstile, email notification | Done and tested |
-| Waitlist sign-up (saving only; notifying the next family is D9) | Done and tested |
-| Waiver versioning and "not collected" flag (D13 groundwork) | Done and tested |
-| Admin dashboard (D5), contact import (D6), campaigns (D7), Stage 3 features | Not started |
+| Database for all three stages, Row Level Security (only the two admins can read) | Done, tested |
+| **D1** Stripe webhook: signature check, no duplicates, refunds, expired checkouts, old-checkout payments kept | Done, tested |
+| **D2** Camp checkout: camps as data, several kids and weeks per payment, info-only camps, optional capacity | Done, tested |
+| **D3** Miami checkout: Kickoff Form fields, boys/girls caps enforced in the database, holds, access code, 200 shared reserved spots, opens Nov 1 10:00 AM, closes Mar 1 | Done, tested |
+| **D4** Private training form endpoint: validation, spam blocking, rate limits, email notification | Done, tested |
+| Admin dashboard at `/admin` (Kickoff Form: "login access to view the registrations" on Nov 1): overview, registrations with filters/detail/CSV, training requests, waitlist | Done, tested |
+| Waitlist sign-up, waiver versioning with "not collected" flag | Done, tested |
+| Stage 2 (contact import, campaign email, editing camps in the dashboard), Stage 3 | Not started |
+
+The client-facing test list is [`docs/stage-1-checklist.md`](docs/stage-1-checklist.md).
+Open questions and dates are in [`docs/open-decisions.md`](docs/open-decisions.md).
 
 ## Run it locally
 
-Requires Node 22, pnpm 10 and any Postgres 15+.
+Requires Node 22, pnpm 10 and Postgres 15+.
 
 ```bash
 pnpm install
-cp .env.example .env           # defaults: local Postgres + mock payments
-pnpm db:reset                  # local only: creates schema and loads data/*.json
-pnpm dev                       # http://localhost:4319
+cp .env.example .env          # local Postgres, mock Stripe, dev admin login
+pnpm db:reset                 # local only: schema + data/*.json
+pnpm admin:build              # builds the dashboard into public/admin
+pnpm dev                      # http://localhost:4319  (dashboard: /admin/)
+pnpm admins add you@example.com   # local admin for the dev login
+pnpm demo:data                # optional: fake families through the real checkout
 ```
 
-With `PAYMENTS_MODE=mock`, checkouts redirect to a local fake Stripe page with
-**Pay** and **Abandon** buttons. Those send correctly signed webhook events, so
-the whole flow runs without Stripe keys. To use Stripe test mode instead, set
-`STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` and remove `PAYMENTS_MODE`, then forward
-events with `stripe listen --forward-to localhost:4319/api/stripe/webhook`.
+`data/miami.json` opens registration on Nov 1, 2026 10:00 AM. To try Miami
+checkout locally before then, clear the opening times:
+`psql "$DATABASE_URL" -c "update miami_event set opens_at = null, public_opens_at = null"`.
+
+With `PAYMENTS_MODE=mock`, checkout goes to a local fake Stripe page with **Pay**
+and **Abandon** buttons that send correctly signed webhooks. Locally, the
+dashboard uses a dev login (email only). On Vercel it requires Supabase Auth.
 
 ```bash
-pnpm test            # creates a throwaway database "footyup_test" and runs the acceptance tests (Node's built-in runner)
-pnpm typecheck
-pnpm licenses:check  # every package, including dev and transitive, must be MIT/Apache/BSD/ISC
+pnpm test            # throwaway database "footyup_test", 59 acceptance tests
+pnpm typecheck       # API + dashboard
+pnpm licenses:check  # every package must be MIT/Apache/BSD/ISC (Build Agreement §4)
 ```
 
-Tests connect as `postgres://footy:footy@localhost:5432/postgres` by default.
-Override with `TEST_ADMIN_DATABASE_URL`.
+## Running it day to day
 
-## Running the system (no deploys needed)
-
-Until the Stage 2 dashboard exists, these scripts are the documented way to
-change things. They use `DIRECT_DATABASE_URL` (or `DATABASE_URL`) from `.env`.
+Settings change without a deploy. These scripts use `DIRECT_DATABASE_URL` (or `DATABASE_URL`).
 
 ```bash
-pnpm camps:upsert                         # load data/camps.json (add/edit camps and sessions)
-pnpm miami config                         # load data/miami.json (caps, reserved spots, prices, dates)
-pnpm miami status                         # spots left per group, gate state
-pnpm miami code add <code> --label "Host families" [--ends-at 2026-11-08T00:00:00-05:00]
-pnpm miami code end-at <ISO time>         # codes stop working then; checkout opens to the public
-pnpm miami code off                       # open to the public now
+pnpm camps:upsert                       # load data/camps.json
+pnpm miami config                       # load data/miami.json (caps, reserved spots, price, dates, phases)
+pnpm miami status                       # spots left per group, whether a code is required
+pnpm miami code add <code> --label "Host families" [--ends-at <ISO time>]
+pnpm miami code off                     # turn codes off
 pnpm waiver add --flow miami --title "Participant waiver" --file waiver.txt
-pnpm settings list
-pnpm settings set notify_email '"owner@example.com"'
+pnpm settings set notify_email '"alex@example.com"'
+pnpm admins add <email>                 # invite a dashboard admin
+pnpm admins list | remove <email>
 ```
 
-Every pending client decision, the access list and the agreed dates:
-[`docs/open-decisions.md`](docs/open-decisions.md). The real Miami access code is
-never given to the developer; use a test code and Ivy Devs sets the real one.
+The real Miami access code is never committed or stored in plain text. Ivy Devs sets it with
+`pnpm miami code add`, and only its hash is saved.
 
 ## How the important parts work
 
 - **No child data in Stripe.** Starting a checkout saves the form as a pending
-  `checkout_intent` and sends Stripe only its id. The webhook turns it into
-  registrations, then clears the stored form data.
-- **Caps can't be oversold.** `reserve_miami()` locks the group row, counts paid
-  registrations plus unexpired holds, and inserts a hold in one transaction.
-  Spots left = cap − paid − active holds. Holds outlive the Stripe session by
-  5 minutes, so a payment can never land after its hold lapsed. Expired holds stop
-  counting on their own, even if the expiry webhook is late.
-- **Webhooks apply exactly once.** The Stripe event id is recorded in the same
-  transaction as its effects. Registrations are also unique per checkout line.
-- **Access codes** are stored as SHA-256 hashes and compared on the server.
-  Checkout requires a code while any active, unexpired code exists.
-- **Reserved spots** for code holders apply only while the gate is on. The public
-  can't take them; code holders past the allotment draw from the general pool.
+  intent; Stripe only gets its id. The webhook turns it into registrations and
+  clears the pending copy.
+- **Caps can't be oversold.** `reserve_miami()` locks both group rows, counts paid
+  registrations plus unexpired holds, and inserts the hold in one transaction.
+  Holds outlive the Stripe session by 5 minutes and stop counting on their own.
+- **Phases.** Before `public_opens_at` only code holders can check out. After it,
+  everyone can, and the code (optional) unlocks the reserved spots. Checkout closes at `closes_at`.
+- **Reserved spots.** One pool across both groups (`reserved_total`, 200 per the
+  Kickoff Form) and/or per group. They apply while a code is active and before `reserved_until`.
+- **Webhooks apply exactly once.** The Stripe event id is stored in the same transaction as its effects.
+- **Dashboard reads go through Row Level Security.** The API checks the Supabase
+  login, then runs every query as role `authenticated` with that user's id, so the
+  table policies (admin_users membership) decide what's visible.
 
 ## Environment variables
 
-Names only. Set values in Vercel project settings, never in the repo.
+Names only. Values go in Vercel project settings, never in the repo.
 
-| Name | Required | Purpose |
+| Name | Where | Purpose |
 | --- | --- | --- |
-| `DATABASE_URL` | yes | Supabase transaction pooler URL (port 6543) |
+| `DATABASE_URL` | Vercel | Supabase transaction pooler URL (port 6543) |
 | `DIRECT_DATABASE_URL` | scripts | Direct Supabase URL for migrations and admin scripts |
-| `PUBLIC_SITE_URL` | yes | Site origin for Stripe redirects, e.g. `https://footyupp.net` |
-| `STRIPE_SECRET_KEY` | yes (prod) | Stripe secret key (test mode until launch approval) |
-| `STRIPE_WEBHOOK_SECRET` | yes (prod) | Signing secret of the `/api/stripe/webhook` endpoint |
-| `PAYMENTS_MODE` | no | `mock` for local only; refused when `VERCEL_ENV=production` |
-| `BREVO_API_KEY` | for email | Without it, emails are logged (subject only), not sent |
-| `EMAIL_FROM`, `EMAIL_FROM_NAME` | no | Sender for notifications |
-| `TURNSTILE_SECRET_KEY` | no | Turns on CAPTCHA for the private training form |
-| `CRON_SECRET` | yes (prod) | Vercel cron auth for `/api/cron/cleanup` |
-| `RATE_LIMIT_SALT` | yes (prod) | Salt for hashing client IPs in rate-limit keys |
+| `PUBLIC_SITE_URL` | Vercel | Public site origin for Stripe redirects, e.g. `https://footyupp.net` |
+| `STRIPE_SECRET_KEY` | Vercel | Stripe secret key (test mode until launch approval) |
+| `STRIPE_WEBHOOK_SECRET` | Vercel | Signing secret of the `/api/stripe/webhook` endpoint |
+| `SUPABASE_URL` | Vercel + scripts | Supabase project URL (admin login) |
+| `SUPABASE_ANON_KEY` | Vercel | Supabase publishable/anon key (safe in the browser) |
+| `SUPABASE_SERVICE_ROLE_KEY` | scripts only | Inviting admins. **Never on Vercel.** |
+| `PUBLIC_ADMIN_URL` | scripts | Where invite links land, e.g. `https://<api domain>/admin/` |
+| `CORS_ALLOWED_ORIGINS` | Vercel | Site domains allowed to call the API from the browser |
+| `BREVO_API_KEY` | Vercel | Email. Without it, emails are logged (subject only), not sent |
+| `EMAIL_FROM`, `EMAIL_FROM_NAME` | Vercel | Sender (must be verified in Brevo) |
+| `CRON_SECRET` | Vercel | Auth for `/api/cron/cleanup` |
+| `RATE_LIMIT_SALT` | Vercel | Salt for hashing IPs in rate-limit keys |
+| `TURNSTILE_SECRET_KEY` | Vercel, optional | CAPTCHA on the training form |
+| `PAYMENTS_MODE` | local only | `mock`; refused in production |
 
-## Moving into Ivy Devs' repo and staging
+## Going live (client accounts)
 
-Per the Build Agreement, the developer works in Ivy Devs' repo with development
-access only (staging, a Supabase dev project, a Stripe Sandbox, a Brevo test
-account). **Ivy Devs deploys to production and switches the live checkout
-themselves** once Stage 1 passes testing.
+Everything runs in the client's **FootyUP** accounts (Kickoff Form, Section A).
+The recommended setup for Nov 1 is this repo as its own Vercel project (API +
+`/admin`), with the existing site's pages calling it. The live site and its
+current `api/checkout.js` stay untouched until Ivy Devs switches the pages over.
 
-1. At kickoff, commit `api/`, `src/`, `supabase/`, `scripts/`, `data/`, `docs/` and
-   `tests/` into their repo. Merge `dependencies`, `devDependencies`, the `scripts`
-   entries and `pnpm-workspace.yaml`, and the `crons` entry from `vercel.json`. The site
-   already uses `stripe`; this code targets `stripe@23`, so align the version.
-2. Supabase dev project: `pnpm db:migrate` with `DIRECT_DATABASE_URL` (or
-   `supabase link` + `supabase db push`), then `pnpm camps:upsert` and `pnpm miami config`.
-3. Stripe Sandbox dashboard: add a webhook endpoint at
-   `https://<staging deployment>/api/stripe/webhook` for `checkout.session.completed`,
+1. **Supabase** (FootyUP org, Pro): create the project, then run `pnpm db:migrate`
+   with `DIRECT_DATABASE_URL`, and `pnpm camps:upsert` and `pnpm miami config`.
+   In Auth settings: turn **off** "Allow new users to sign up", set the Site URL to
+   `https://<api domain>/admin/` and add it to the redirect URLs. Point backups at the Pro plan's daily backups.
+2. **Vercel** (FootyUP team, Pro): import the repo as a project. `vercel.json`
+   already sets the build (`pnpm build`), output (`public`) and the daily cleanup cron.
+   Add the environment variables above.
+3. **Stripe** (client account, test mode first): add a webhook endpoint at
+   `https://<api domain>/api/stripe/webhook` for `checkout.session.completed`,
    `checkout.session.expired`, `checkout.session.async_payment_succeeded`,
-   `checkout.session.async_payment_failed` and `charge.refunded`. Keep delayed payment
-   methods (bank debits) off for Miami. The code holds the spot if one is used, but card-only
-   keeps holds short.
-4. Set the environment variables above on Vercel for Preview/staging.
-5. The pages call the new endpoints; `api/checkout.js` stays live until Ivy Devs
-   switches over. Payments it creates are still recorded by the webhook.
+   `checkout.session.async_payment_failed` and `charge.refunded`. Keep bank-debit methods off.
+4. **Admins:** `pnpm admins add alexdimitrirapo@gmail.com` and Chris's email. Each gets an
+   invite email to choose a password.
+5. **Brevo:** create an API key and verified sender, set `BREVO_API_KEY`, `EMAIL_FROM`, and
+   `pnpm settings set notify_email '"..."'`. Send the SPF/DKIM/DMARC records to whoever
+   controls the footyupp.net DNS.
+6. **Access code:** Ivy Devs runs `pnpm miami code add <code> --label "Host families"`.
+7. Run [`docs/stage-1-checklist.md`](docs/stage-1-checklist.md) on test mode, then swap to live Stripe keys.
 
-For production, Ivy Devs repeats steps 2–4 on their production project and keys.
-Email DNS records (SPF, DKIM, DMARC) are added by Ivy Devs; the developer sends
-the exact values from Brevo. See [`docs/handoff.md`](docs/handoff.md) for
-services, secret names, packages and the handoff checklist.
+To merge into the site repo instead, copy `api/`, `src/`, `admin/`, `supabase/`, `scripts/`,
+`data/` and `tests/`, merge `package.json` and `vercel.json`, and align the `stripe` version (this code targets v23).
 
 ## Layout
 
 ```
-api/                  Vercel functions (thin wrappers, Web Request/Response)
+api/                  Vercel functions (Web Request/Response); api/admin/[view].ts serves the dashboard API
+admin/                Dashboard (React, bundled by esbuild into public/admin)
 src/contract.ts       Request/response schemas shared with the front end
 src/handlers/         Endpoint logic
-src/lib/              Database, Stripe gateway (+ mock), email, guards, settings
-src/admin/            Config loaders used by the scripts
+src/lib/              Database, Stripe gateway (+ mock), email, admin auth, guards, settings
 supabase/migrations/  Schema, functions, RLS
 supabase/local/       Local-only stand-in for Supabase auth (never applied to Supabase)
-scripts/              Dev server, migrations, admin CLIs
-data/                 Camp and Miami configuration (placeholders marked TBC)
+scripts/              Dev server, migrations, admin CLIs, demo data, dashboard build
+data/                 Camp and Miami configuration
+docs/                 API contract, Stage 1 checklist, open decisions, handoff
 tests/                Acceptance tests against a real Postgres
 ```

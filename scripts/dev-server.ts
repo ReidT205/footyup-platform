@@ -22,7 +22,7 @@ async function toRequest(req: IncomingMessage): Promise<Request> {
   for await (const chunk of req) chunks.push(chunk as Buffer);
   const headers = new Headers();
   for (const [k, v] of Object.entries(req.headers)) if (typeof v === "string") headers.set(k, v);
-  headers.set("x-forwarded-for", req.socket.remoteAddress ?? "127.0.0.1");
+  if (!headers.has("x-forwarded-for")) headers.set("x-forwarded-for", req.socket.remoteAddress ?? "127.0.0.1");
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   return new Request(`http://localhost:${port}${req.url}`, { method: req.method, headers, body: hasBody ? Buffer.concat(chunks) : undefined });
 }
