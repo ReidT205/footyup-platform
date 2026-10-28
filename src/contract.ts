@@ -82,24 +82,47 @@ export const ShippingAddress = z.object({
   postalCode: z.string().trim().regex(/^[A-Za-z0-9 \-]{3,12}$/),
 });
 
+/** Fields from the client's Kickoff Form, "Required parent/guardian information". */
+export const MiamiParent = z.object({
+  firstName: text(60),
+  lastName: text(60),
+  email: Email,
+  phone: Phone,
+  emergencyPhone: Phone,
+  /** Not on the client's form. Defaults to the shipping city so emails by town still work. */
+  town: text(80).optional(),
+});
+
+/** Fields from the client's Kickoff Form, "Required player registration information". */
 export const MiamiPlayer = z.object({
-  name: text(120),
+  firstName: text(60),
+  lastName: text(60),
   age: z.int().min(10).max(20),
   /** Sets the group: boy -> boys, girl -> girls. */
   sex: z.enum(["boy", "girl"]),
   heightIn: z.int().min(36).max(96),
   weightLb: z.int().min(50).max(400),
+  position: text(40),
+  club: text(120),
   email: Email,
-  clothingSize: text(16),
-  shippingAddress: ShippingAddress,
+  shirtSize: text(16),
+  shortSize: text(16),
+  /** Only when this player's package ships somewhere other than the family address. */
+  shippingAddress: ShippingAddress.optional(),
 });
 
 export const AccessCode = z.string().trim().min(1).max(64);
 
 export const MiamiCheckoutRequest = z.object({
-  ...CheckoutCommon,
   accessCode: AccessCode.optional(),
+  parent: MiamiParent,
+  /** Where the GOINGFORGOAT x FOOTYUP package ships. */
+  shippingAddress: ShippingAddress,
   players: z.array(MiamiPlayer).min(1).max(4),
+  waiver: WaiverAcceptance.optional(),
+  marketingOptIn: z.boolean().optional(),
+  successPath: SitePath.optional(),
+  cancelPath: SitePath.optional(),
 });
 export type MiamiCheckoutRequest = z.infer<typeof MiamiCheckoutRequest>;
 
@@ -243,24 +266,37 @@ export interface MiamiGroupStatus {
   spotsLeft: number;
   full: boolean;
   open: boolean;
+  /** This group's combine dates and daily hours (boys and girls attend on different days). */
+  startsOn: string | null;
+  endsOn: string | null;
+  dailyStartTime: string | null;
+  dailyEndTime: string | null;
 }
 
 export interface MiamiStatusResponse {
   event: {
     name: string;
-    startsOn: string | null;
-    endsOn: string | null;
     location: string | null;
     infoText: string | null;
+    /** When checkout opens at all (code holders included). */
     opensAt: string | null;
-    /** False before opensAt or when the client has paused checkout. */
+    /** When families without a code can register. */
+    publicOpensAt: string | null;
+    closesAt: string | null;
+    /** True between opensAt and closesAt, unless the client has paused checkout. */
     open: boolean;
+    /** True once families without a code can register. */
+    publicOpen: boolean;
   };
+  /** A code is required right now. Show the code field and block the form without one. */
   accessCodeRequired: boolean;
-  clothingSizes: string[];
+  /** Codes are accepted right now (optional during the public phase). Show an optional code field. */
+  accessCodeAccepted: boolean;
+  /** Empty list = free text. */
+  options: { positions: string[]; shirtSizes: string[]; shortSizes: string[] };
   waiver: WaiverInfo | null;
   waiverRequired: boolean;
-  /** Public-phase view. Code holders get their view from verify-code. */
+  /** What a family without a code sees (or code holders, while a code is required). Code holders get their view from verify-code. */
   groups: MiamiGroupStatus[];
 }
 

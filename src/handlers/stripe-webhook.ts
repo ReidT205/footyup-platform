@@ -7,7 +7,15 @@ import type { WaiverRecord } from "../lib/waiver.js";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface IntentPayload {
-  parent: { name: string; email: string; phone: string; town: string };
+  parent: {
+    name: string;
+    firstName?: string;
+    lastName?: string;
+    email: string;
+    phone: string;
+    emergencyPhone?: string;
+    town: string;
+  };
   marketingOptIn: boolean;
   extra: Record<string, unknown>;
   waiver: WaiverRecord;
@@ -18,12 +26,17 @@ interface IntentPayload {
     miamiGroup?: "boys" | "girls";
     player: {
       name: string;
+      firstName?: string;
+      lastName?: string;
       age: number;
       sex: "boy" | "girl" | null;
       email?: string;
       heightIn?: number;
       weightLb?: number;
-      clothingSize?: string;
+      position?: string;
+      club?: string;
+      shirtSize?: string;
+      shortSize?: string;
       shippingAddress?: { line1: string; line2?: string; city: string; state: string; postalCode: string };
       extra: Record<string, unknown>;
     };
@@ -103,16 +116,19 @@ async function completeCheckout(tx: Db, session: Record<string, any>): Promise<W
     await tx`
       insert into public.registrations (
         intent_id, line_no, payment_id, camp_id, session_id, miami_group, via_access_code,
-        parent_name, parent_email, parent_phone, parent_town,
-        player_name, player_age, player_sex, player_email, player_height_in, player_weight_lb, clothing_size,
+        parent_name, parent_first_name, parent_last_name, parent_email, parent_phone, emergency_phone, parent_town,
+        player_name, player_first_name, player_last_name, player_age, player_sex, player_email,
+        player_height_in, player_weight_lb, player_position, player_club, shirt_size, short_size,
         ship_line1, ship_line2, ship_city, ship_state, ship_postal_code, extra,
         waiver_status, waiver_id, waiver_accepted_at, waiver_accepted_name
       ) values (
         ${intent.id}, ${line.lineNo}, ${paymentId}, ${line.campId}, ${line.sessionId ?? null}, ${line.miamiGroup ?? null},
         ${intent.via_access_code},
-        ${parent.name}, ${parent.email}, ${parent.phone}, ${parent.town},
-        ${p.name}, ${p.age}, ${p.sex ?? null}, ${p.email ?? null}, ${p.heightIn ?? null}, ${p.weightLb ?? null},
-        ${p.clothingSize ?? null},
+        ${parent.name}, ${parent.firstName ?? null}, ${parent.lastName ?? null}, ${parent.email}, ${parent.phone},
+        ${parent.emergencyPhone ?? null}, ${parent.town},
+        ${p.name}, ${p.firstName ?? null}, ${p.lastName ?? null}, ${p.age}, ${p.sex ?? null}, ${p.email ?? null},
+        ${p.heightIn ?? null}, ${p.weightLb ?? null}, ${p.position ?? null}, ${p.club ?? null},
+        ${p.shirtSize ?? null}, ${p.shortSize ?? null},
         ${addr?.line1 ?? null}, ${addr?.line2 ?? null}, ${addr?.city ?? null}, ${addr?.state ?? null}, ${addr?.postalCode ?? null},
         ${tx.json({ ...payload.extra, ...p.extra } as never)},
         ${waiver.status}, ${waiver.waiverId}, ${waiver.acceptedAt}, ${waiver.acceptedName}

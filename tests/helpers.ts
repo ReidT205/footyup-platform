@@ -108,15 +108,38 @@ export async function fillMiami(db: Sql, grp: "boys" | "girls", n: number, viaCo
 
 export const parent = { name: "Jamie Rivera", email: "Jamie.Rivera@Example.test ", phone: "(617) 555-0142", town: "Brookline" };
 
+export const miamiParent = {
+  firstName: "Jamie",
+  lastName: "Rivera",
+  email: "Jamie.Rivera@Example.test ",
+  phone: "(617) 555-0142",
+  emergencyPhone: "617-555-0177",
+};
+
+export const shipping = { line1: "1 Test Street", line2: "Apt 2", city: "Brookline", state: "MA", postalCode: "02445" };
+
 export function miamiPlayer(sex: "boy" | "girl", n = 1) {
   return {
-    name: `Test Player ${n}`,
+    firstName: "Test",
+    lastName: `Player ${n}`,
     age: 16,
     sex,
     heightIn: 70,
     weightLb: 150,
+    position: "Midfielder",
+    club: "Test FC",
     email: `player${n}@example.test`,
-    clothingSize: "M",
-    shippingAddress: { line1: "1 Test Street", city: "Brookline", state: "MA", postalCode: "02445" },
+    shirtSize: "M",
+    shortSize: "L",
   };
+}
+
+/**
+ * A neutral Miami baseline for tests that aren't about the kickoff-form
+ * schedule: open now, no public phase, 200 per group, no reservations, and two
+ * different prices so code-holder pricing is visible.
+ */
+export async function neutralMiami(db: Sql) {
+  await db`update public.miami_event set opens_at = null, public_opens_at = null, closes_at = null, reserved_total = 0`;
+  await db`update public.miami_groups set cap = 200, reserved_for_code_holders = 0, price_code_holder_cents = 157500, price_public_cents = 130000`;
 }
