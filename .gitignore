@@ -7,3 +7,4 @@ coverage/
 agent-tools/
 terminals/
 *.log
+public/admin/

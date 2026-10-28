@@ -2,9 +2,9 @@
  * Local stand-in for `vercel dev`: serves every function in api/ on one port,
  * plus a fake Stripe Checkout page when PAYMENTS_MODE=mock.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { join, resolve } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createDeps, setDeps } from "../src/lib/deps.js";
 import { loadEnv } from "../src/lib/env.js";
@@ -50,7 +50,34 @@ async function resolveApi(pathname: string): Promise<Record<string, unknown> | n
     const file = join(apiRoot, candidate);
     if (file.startsWith(apiRoot) && existsSync(file)) return import(pathToFileURL(file).href);
   }
+  // Vercel-style dynamic segment, e.g. api/admin/[view].ts
+  const dir = join(apiRoot, dirname(rel));
+  if (dir.startsWith(apiRoot) && existsSync(dir)) {
+    const dynamic = readdirSync(dir).find((f) => /^\[[^\]]+\]\.ts$/.test(f));
+    if (dynamic) return import(pathToFileURL(join(dir, dynamic)).href);
+  }
   return null;
+}
+
+const publicRoot = resolve("public");
+const MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".map": "application/json",
+};
+
+function serveStatic(pathname: string): Response | null {
+  let file = join(publicRoot, decodeURIComponent(pathname));
+  if (!file.startsWith(publicRoot)) return null;
+  if (existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
+  if (!existsSync(file)) return null;
+  return new Response(readFileSync(file), {
+    headers: { "content-type": MIME[extname(file)] ?? "application/octet-stream", "cache-control": "no-store" },
+  });
 }
 
 async function mockCheckout(req: Request, url: URL): Promise<Response> {
@@ -95,6 +122,9 @@ const server = createServer(async (nodeReq, nodeRes) => {
       return send(nodeRes, await handler(req));
     }
     if (url.pathname.startsWith("/__mock/checkout/")) return send(nodeRes, await mockCheckout(req, url));
+    if (url.pathname === "/admin") return send(nodeRes, new Response(null, { status: 308, headers: { location: "/admin/" } }));
+    const asset = url.pathname.startsWith("/admin/") ? serveStatic(url.pathname) : null;
+    if (asset) return send(nodeRes, asset);
     if (url.pathname === "/registration/success") {
       return send(nodeRes, html(`<h1>Registration received</h1><p>Stripe session <code>${url.searchParams.get("session_id") ?? ""}</code>. This placeholder stands in for the success page Ivy Devs builds.</p><p><a href="/">Back</a></p>`));
     }
@@ -105,6 +135,7 @@ const server = createServer(async (nodeReq, nodeRes) => {
       return send(
         nodeRes,
         html(`<h1>Footy Up registration API</h1><p>Local server. Payments: <code>${env.paymentsMode}</code>. Email: <code>${deps.mailer.mode}</code>.</p>
+        <p><a href="/admin/">Open the admin dashboard</a> (run <code>pnpm admin:build</code> first).</p>
         <ul><li><a href="/api/camps">GET /api/camps</a></li><li><a href="/api/miami">GET /api/miami</a></li>
         <li>POST /api/checkout/camp</li><li>POST /api/miami/verify-code</li><li>POST /api/miami/checkout</li>
         <li>POST /api/private-training</li><li>POST /api/waitlist</li><li>POST /api/stripe/webhook</li><li><a href="/api/cron/cleanup">GET /api/cron/cleanup</a></li></ul>

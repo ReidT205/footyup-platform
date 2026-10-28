@@ -72,13 +72,39 @@ export function errorResponse(err: unknown, scope: string): Response {
   return json(body, 500);
 }
 
-/** Wraps a handler so thrown ApiErrors become JSON responses and nothing else leaks. */
+/**
+ * Origins allowed to call the public endpoints from a browser, e.g. the live
+ * site and its staging domain when they're on a different Vercel project.
+ * Comma-separated in CORS_ALLOWED_ORIGINS.
+ */
+function corsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("origin");
+  const allowed = (process.env.CORS_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((o) => o.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+  if (!origin || !allowed.includes(origin)) return {};
+  return {
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "content-type",
+    "access-control-max-age": "600",
+    vary: "Origin",
+  };
+}
+
+/** Wraps a handler so thrown ApiErrors become JSON responses and nothing else leaks. Also answers CORS preflights. */
 export function endpoint(scope: string, fn: (req: Request) => Promise<Response>) {
   return async (req: Request): Promise<Response> => {
+    const cors = corsHeaders(req);
+    if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+    let res: Response;
     try {
-      return await fn(req);
+      res = await fn(req);
     } catch (err) {
-      return errorResponse(err, scope);
+      res = errorResponse(err, scope);
     }
+    for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
+    return res;
   };
 }
