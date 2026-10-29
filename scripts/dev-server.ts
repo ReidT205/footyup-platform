@@ -9,6 +9,8 @@ import { pathToFileURL } from "node:url";
 import { createDeps, setDeps } from "../src/lib/deps.js";
 import { loadEnv } from "../src/lib/env.js";
 import { MockGateway } from "../src/lib/payments.js";
+import { MemoryMailer } from "../src/lib/email.js";
+import { MockEmailProvider } from "../src/email/provider.js";
 
 const port = Number(process.env.PORT ?? 4319);
 const env = loadEnv();
@@ -118,6 +120,22 @@ async function mockCheckout(req: Request, url: URL): Promise<Response> {
     <form method="post" style="display:inline" action="/__mock/checkout/${session.id}/cancel"><button class="cancel">Abandon checkout</button></form></div>`);
 }
 
+/** Local stand-in for an inbox: every email the app would have sent through Brevo. */
+function outbox(url: URL): Response {
+  const mails: { kind: string; to: string; subject: string; html: string; at: number }[] = []
+  if (deps.mailer instanceof MemoryMailer) deps.mailer.sent.forEach((m, i) => mails.push({ kind: "Automatic", to: m.to, subject: m.subject, html: m.html ?? `<pre>${m.text}</pre>`, at: i }))
+  if (deps.email instanceof MockEmailProvider) {
+    for (const s of [...deps.email.sends].reverse()) for (const m of s.messages) mails.push({ kind: s.kind === "test" ? "Test" : "Campaign", to: m.to, subject: m.subject, html: m.html, at: 1e6 + mails.length })
+  }
+  mails.reverse()
+  const i = Number(url.searchParams.get("i") ?? "-1")
+  if (i >= 0 && mails[i]) return new Response(mails[i]!.html, { headers: { "content-type": "text/html; charset=utf-8" } })
+  const rows = mails.map((m, n) => `<li><a href="/__mock/outbox?i=${n}" target="mail">${m.subject.replace(/</g, "&lt;")}</a><br><small>${m.kind} → ${m.to}</small></li>`).join("")
+  return html(`<h1>Test outbox</h1><p>Emails captured locally (nothing is delivered). Newest first. Restarting the server clears it.</p>
+    <div class="box"><ul style="list-style:none;padding:0">${rows || "<li>No emails yet.</li>"}</ul></div>
+    <iframe name="mail" style="width:100%;height:640px;border:1px solid #e4e4e7;border-radius:12px;background:#fff"></iframe>`)
+}
+
 const server = createServer(async (nodeReq, nodeRes) => {
   try {
     const req = await toRequest(nodeReq);
@@ -131,6 +149,7 @@ const server = createServer(async (nodeReq, nodeRes) => {
       return send(nodeRes, await handler(req));
     }
     if (url.pathname.startsWith("/__mock/checkout/")) return send(nodeRes, await mockCheckout(req, url));
+    if (url.pathname.startsWith("/__mock/outbox")) return send(nodeRes, outbox(url));
     if (url.pathname === "/admin") return send(nodeRes, new Response(null, { status: 308, headers: { location: "/admin/" } }));
     const asset = url.pathname.startsWith("/admin/") ? serveStatic(url.pathname) : null;
     if (asset) return send(nodeRes, asset);

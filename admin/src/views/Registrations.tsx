@@ -101,8 +101,23 @@ function Fields({ rows }: { rows: [string, ReactNode][] }) {
   )
 }
 
-function RegistrationSheet({ r, onClose }: { r: Registration | null; onClose: () => void }) {
+function RegistrationSheet({ r, onClose, api, onChanged }: { r: Registration | null; onClose: () => void; api: Api; onChanged: () => void }) {
   const miami = Boolean(r?.miami_group)
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [reason, setReason] = useState("")
+  const [busy, setBusy] = useState(false)
+  async function setCancelled(cancel: boolean) {
+    if (!r) return
+    setBusy(true)
+    try {
+      await api("registration-cancel", { id: r.id, cancel, reason: reason || null })
+      setCancelOpen(false)
+      onChanged()
+      onClose()
+    } finally {
+      setBusy(false)
+    }
+  }
   return (
     <Sheet open={Boolean(r)} onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="w-full gap-0 overflow-y-auto p-0 sm:max-w-lg">
@@ -120,6 +135,7 @@ function RegistrationSheet({ r, onClose }: { r: Registration | null; onClose: ()
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
+                {r.status === "cancelled" && <StatusBadge value="cancelled" />}
                 <StatusBadge value={r.payment_status} />
                 <StatusBadge value={r.waiver_status} />
                 {miami && r.via_access_code && <Badge variant="info-light">Host-school code</Badge>}
@@ -198,12 +214,33 @@ function RegistrationSheet({ r, onClose }: { r: Registration | null; onClose: ()
                 <Fields
                   rows={[
                     ["Registered", dateTime(r.created_at)],
+                    ["Paid for this registration", r.price_cents !== null ? money(r.price_cents) : null],
+                    ...(r.discount_cents ? ([["Discount", `${money(r.discount_cents)}${r.promo_code ? ` (code ${r.promo_code})` : ""}`]] as [string, ReactNode][]) : []),
                     ["Checkout total", money(r.checkout_total_cents)],
                     ["Refunded", money(r.refunded_cents)],
                     ["Stripe payment", <code className="bg-muted rounded px-1.5 py-0.5 text-xs">{r.stripe_payment_intent_id ?? "—"}</code>],
                   ]}
                 />
                 <p className="text-muted-foreground mt-3 text-xs">The checkout total covers every player and session paid for together.</p>
+              </Section>
+              <Section icon={XIcon} title={r.status === "cancelled" ? "Cancelled" : "Cancel registration"}>
+                {r.status === "cancelled" ? (
+                  <div className="space-y-3">
+                    <p className="text-sm">Cancelled {dateTime(r.cancelled_at)}{r.cancel_reason ? `: ${r.cancel_reason}` : ""}.</p>
+                    <Button variant="outline" size="sm" disabled={busy} onClick={() => setCancelled(false)}>Restore registration</Button>
+                  </div>
+                ) : cancelOpen ? (
+                  <div className="space-y-3">
+                    <Input placeholder="Reason (optional), e.g. family moved" value={reason} onChange={(e) => setReason(e.target.value)} />
+                    <p className="text-muted-foreground text-xs">This frees the spot (and offers it to the waitlist). It doesn't refund money: issue refunds in Stripe, and they show here automatically.</p>
+                    <div className="flex gap-2">
+                      <Button variant="destructive" size="sm" disabled={busy} onClick={() => setCancelled(true)}>{busy ? "Cancelling…" : "Cancel registration"}</Button>
+                      <Button variant="ghost" size="sm" onClick={() => setCancelOpen(false)}>Keep it</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button variant="outline" size="sm" onClick={() => setCancelOpen(true)}>Cancel this registration…</Button>
+                )}
               </Section>
               <Section icon={FileSignatureIcon} title="Waiver">
                 <Fields
@@ -221,17 +258,18 @@ function RegistrationSheet({ r, onClose }: { r: Registration | null; onClose: ()
   )
 }
 
-export function Registrations({ api, onExpired, refreshKey }: { api: Api; onExpired: () => void; refreshKey: number }) {
+export function Registrations({ api, onExpired, refreshKey, params = {} }: { api: Api; onExpired: () => void; refreshKey: number; params?: Record<string, string> }) {
   const load = useCallback(() => api<{ registrations: Registration[] }>("registrations"), [api])
   const { data, error, loading, reload } = useLoad(load, onExpired, refreshKey)
 
   const [search, setSearch] = useState("")
-  const [program, setProgram] = useState("")
-  const [town, setTown] = useState("")
-  const [payment, setPayment] = useState("")
-  const [waiver, setWaiver] = useState("")
-  const [from, setFrom] = useState("")
-  const [to, setTo] = useState("")
+  const [program, setProgram] = useState(params.program ?? "")
+  const [town, setTown] = useState(params.town ?? "")
+  const [payment, setPayment] = useState(params.payment ?? "")
+  const [waiver, setWaiver] = useState(params.waiver ?? "")
+  const [from, setFrom] = useState(params.from ?? "")
+  const [to, setTo] = useState(params.to ?? "")
+  const [showCancelled, setShowCancelled] = useState(false)
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "created_at", dir: -1 })
   const [page, setPage] = useState(0)
   const [open, setOpen] = useState<Registration | null>(null)
@@ -245,9 +283,10 @@ export function Registrations({ api, onExpired, refreshKey }: { api: Api; onExpi
     const fromTs = from ? new Date(`${from}T00:00:00`).getTime() : null
     const toTs = to ? new Date(`${to}T23:59:59`).getTime() : null
     const list = rows.filter((r) => {
+      if (!showCancelled && r.status === "cancelled") return false
       if (q && ![r.player_name, r.parent_name, r.parent_email, r.parent_phone, r.player_email ?? ""].some((v) => v.toLowerCase().includes(q))) return false
       if (program && programOf(r) !== program) return false
-      if (town && r.parent_town.trim().toLowerCase() !== town.toLowerCase()) return false
+      if (town && r.parent_town.trim().toLowerCase() !== town.trim().toLowerCase()) return false
       if (payment && r.payment_status !== payment) return false
       if (waiver && r.waiver_status !== waiver) return false
       const ts = new Date(r.created_at).getTime()
@@ -257,7 +296,7 @@ export function Registrations({ api, onExpired, refreshKey }: { api: Api; onExpi
     })
     const value = (r: Registration) => (sort.key === "program" ? programOf(r) : String(r[sort.key] ?? ""))
     return list.sort((a, b) => value(a).localeCompare(value(b)) * sort.dir)
-  }, [rows, search, program, town, payment, waiver, from, to, sort])
+  }, [rows, search, program, town, payment, waiver, from, to, sort, showCancelled])
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE))
   const current = Math.min(page, pages - 1)
@@ -322,8 +361,11 @@ export function Registrations({ api, onExpired, refreshKey }: { api: Api; onExpi
             <Input type="date" className="bg-background lg:w-36" value={to} onChange={(e) => set(setTo)(e.target.value)} aria-label="Registered to" />
           </div>
           <div className="text-muted-foreground flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span>
-              Showing <span className="text-foreground font-medium">{filtered.length}</span> of {rows.length} registrations
+            <span className="flex items-center gap-3">
+              <span>Showing <span className="text-foreground font-medium">{filtered.length}</span> of {rows.length} registrations</span>
+              {rows.some((r) => r.status === "cancelled") && (
+                <label className="flex items-center gap-1.5"><input type="checkbox" className="accent-[var(--brand)]" checked={showCancelled} onChange={(e) => setShowCancelled(e.target.checked)} />Show cancelled</label>
+              )}
             </span>
             {activeFilters > 0 && (
               <Button variant="ghost" size="xs" onClick={reset}>
@@ -380,7 +422,7 @@ export function Registrations({ api, onExpired, refreshKey }: { api: Api; onExpi
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">{r.parent_town}</TableCell>
                     <TableCell className="text-muted-foreground hidden sm:table-cell">{dateTime(r.created_at)}</TableCell>
-                    <TableCell><StatusBadge value={r.payment_status} /></TableCell>
+                    <TableCell>{r.status === "cancelled" ? <StatusBadge value="cancelled" /> : <StatusBadge value={r.payment_status} />}</TableCell>
                     <TableCell className="hidden xl:table-cell"><StatusBadge value={r.waiver_status} /></TableCell>
                     <TableCell><ChevronRightIcon className="text-muted-foreground size-4" /></TableCell>
                   </TableRow>
@@ -406,7 +448,7 @@ export function Registrations({ api, onExpired, refreshKey }: { api: Api; onExpi
           </>
         )}
       </Card>
-      <RegistrationSheet r={open} onClose={() => setOpen(null)} />
+      <RegistrationSheet r={open} onClose={() => setOpen(null)} api={api} onChanged={reload} />
     </div>
   )
 }

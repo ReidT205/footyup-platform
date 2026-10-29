@@ -16,9 +16,16 @@ import {
   type Session,
 } from "./auth"
 import type { Overview as OverviewData } from "./types"
+import { Analytics } from "./views/Analytics"
+import { Compose } from "./views/Compose"
+import { Contacts } from "./views/Contacts"
+import { EmailHistory } from "./views/EmailHistory"
 import { Overview, miamiPhase } from "./views/Overview"
 import { Registrations } from "./views/Registrations"
 import { Requests } from "./views/Requests"
+import { Revenue } from "./views/Revenue"
+import { Rosters } from "./views/Rosters"
+import { Settings } from "./views/settings/Settings"
 import { Waitlist } from "./views/Waitlist"
 import { AppSidebar, BrandMark, TAB_LABELS, type NavCounts, type Tab } from "@/components/app/app-sidebar"
 import { ErrorState } from "@/components/app/states"
@@ -33,6 +40,14 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { Spinner } from "@/components/ui/spinner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+
+export interface ViewProps {
+  api: ReturnType<typeof createApi>
+  onExpired: () => void
+  refreshKey: number
+  navigate: (tab: string, params?: Record<string, string>) => void
+  params: Record<string, string>
+}
 
 function AuthLayout({ children }: { children: ReactNode }) {
   return (
@@ -208,10 +223,16 @@ function ChoosePassword({ config, session, invited, onDone }: { config: AuthConf
   )
 }
 
-const TABS: Tab[] = ["overview", "registrations", "requests", "waitlist"]
+const TABS = Object.keys(TAB_LABELS) as Tab[]
 
 function Dashboard({ config, session, setSession, onSignOut }: { config: AuthConfig; session: Session; setSession: (s: Session | null) => void; onSignOut: () => void }) {
-  const [tab, setTab] = useState<Tab>(() => TABS.find((t) => `#${t}` === location.hash) ?? "overview")
+  const [tab, setTabState] = useState<Tab>(() => TABS.find((t) => `#${t}` === location.hash) ?? "overview")
+  const [params, setParams] = useState<Record<string, string>>({})
+  const navigate = useCallback((t: string, p: Record<string, string> = {}) => {
+    setParams(p)
+    setTabState(t as Tab)
+  }, [])
+  const setTab = useCallback((t: Tab) => navigate(t), [navigate])
   const [refreshKey, setRefreshKey] = useState(0)
   const [summary, setSummary] = useState<OverviewData | null>(null)
   const [updatedAt, setUpdatedAt] = useState(() => new Date())
@@ -238,7 +259,10 @@ function Dashboard({ config, session, setSession, onSignOut }: { config: AuthCon
   const counts: NavCounts = summary
     ? { registrations: summary.totals.registrations, requests: summary.totals.new_requests, waitlist: summary.totals.waiting }
     : {}
-  const views = { overview: Overview, registrations: Registrations, requests: Requests, waitlist: Waitlist }
+  const views: Record<Tab, React.ComponentType<ViewProps>> = {
+    overview: Overview, analytics: Analytics, revenue: Revenue, registrations: Registrations, rosters: Rosters, waitlist: Waitlist,
+    requests: Requests, compose: Compose, contacts: Contacts, emails: EmailHistory, settings: Settings,
+  }
   const View = views[tab]
 
   return (
@@ -253,7 +277,7 @@ function Dashboard({ config, session, setSession, onSignOut }: { config: AuthCon
           miami={summary ? miamiPhase(summary) : null}
         />
         <SidebarInset className="min-w-0">
-          <header className="bg-background/80 sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b px-4 backdrop-blur md:rounded-t-xl">
+          <header className="app-topbar bg-background/80 sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b px-4 backdrop-blur md:rounded-t-xl">
             <SidebarTrigger className="-ml-1" />
             <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-4" />
             <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
@@ -271,7 +295,7 @@ function Dashboard({ config, session, setSession, onSignOut }: { config: AuthCon
             </div>
           </header>
           <div className="mx-auto w-full max-w-7xl flex-1 p-4 md:p-6 lg:p-8">
-            <View key={tab} api={api} onExpired={expired} refreshKey={refreshKey} />
+            <View key={`${tab}:${JSON.stringify(params)}`} api={api} onExpired={expired} refreshKey={refreshKey} navigate={navigate} params={params} />
           </div>
         </SidebarInset>
       </SidebarProvider>

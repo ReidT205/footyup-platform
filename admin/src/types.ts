@@ -79,6 +79,10 @@ export interface Registration {
   refunded_cents: number;
   stripe_payment_intent_id: string | null;
   stripe_checkout_session_id: string;
+  price_cents: number | null;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
+  promo_code: string | null;
 }
 
 export interface TrainingRequest {

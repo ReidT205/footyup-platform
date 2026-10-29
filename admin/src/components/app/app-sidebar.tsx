@@ -1,12 +1,19 @@
 import { useState } from "react"
 import { motion } from "motion/react"
 import {
+  BarChart3Icon,
+  BanknoteIcon,
   ChevronsUpDownIcon,
+  ClipboardCheckIcon,
   ClipboardListIcon,
+  ContactIcon,
+  HistoryIcon,
   HourglassIcon,
   LayoutDashboardIcon,
   LogOutIcon,
   MessageSquareTextIcon,
+  SendIcon,
+  SettingsIcon,
   type LucideIcon,
 } from "lucide-react"
 
@@ -36,7 +43,7 @@ import {
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 
-export type Tab = "overview" | "registrations" | "requests" | "waitlist"
+export type Tab = "overview" | "analytics" | "revenue" | "registrations" | "rosters" | "waitlist" | "requests" | "compose" | "contacts" | "emails" | "settings"
 
 export interface NavCounts {
   registrations?: number
@@ -49,19 +56,46 @@ const GROUPS: { label: string; items: { id: Tab; label: string; icon: LucideIcon
     label: "Dashboard",
     items: [
       { id: "overview", label: "Overview", icon: LayoutDashboardIcon },
-      { id: "registrations", label: "Registrations", icon: ClipboardListIcon, count: "registrations" },
+      { id: "analytics", label: "Analytics", icon: BarChart3Icon },
+      { id: "revenue", label: "Revenue", icon: BanknoteIcon },
     ],
   },
   {
-    label: "Inbox",
+    label: "Registrations",
     items: [
-      { id: "requests", label: "Private training", icon: MessageSquareTextIcon, count: "requests" },
+      { id: "registrations", label: "Registrations", icon: ClipboardListIcon, count: "registrations" },
+      { id: "rosters", label: "Rosters", icon: ClipboardCheckIcon },
       { id: "waitlist", label: "Waitlist", icon: HourglassIcon, count: "waitlist" },
+      { id: "requests", label: "Private training", icon: MessageSquareTextIcon, count: "requests" },
     ],
+  },
+  {
+    label: "Email",
+    items: [
+      { id: "compose", label: "Send email", icon: SendIcon },
+      { id: "contacts", label: "Contacts", icon: ContactIcon },
+      { id: "emails", label: "Email history", icon: HistoryIcon },
+    ],
+  },
+  {
+    label: "Manage",
+    items: [{ id: "settings", label: "Settings", icon: SettingsIcon }],
   },
 ]
 
-export const TAB_LABELS: Record<Tab, string> = { overview: "Overview", registrations: "Registrations", requests: "Private training", waitlist: "Waitlist" }
+export const TAB_LABELS: Record<Tab, string> = {
+  overview: "Overview",
+  analytics: "Analytics",
+  revenue: "Revenue",
+  registrations: "Registrations",
+  rosters: "Rosters",
+  waitlist: "Waitlist",
+  requests: "Private training",
+  compose: "Send email",
+  contacts: "Contacts",
+  emails: "Email history",
+  settings: "Settings",
+}
 
 export function BrandMark({ className }: { className?: string }) {
   return (

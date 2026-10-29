@@ -113,3 +113,28 @@
     @apply bg-brand/20;
   }
 }
+
+/* Rosters print on letter paper without the app chrome. */
+@media print {
+  @page {
+    size: letter;
+    margin: 0.5in;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  [data-slot="sidebar"],
+  [data-slot="sidebar-gap"],
+  [data-slot="sidebar-container"],
+  .app-topbar {
+    display: none !important;
+  }
+  [data-slot="sidebar-inset"] {
+    margin: 0 !important;
+    box-shadow: none !important;
+  }
+  .roster-print table {
+    font-size: 11px;
+  }
+}

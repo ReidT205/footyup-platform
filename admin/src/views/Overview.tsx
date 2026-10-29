@@ -91,7 +91,7 @@ function OverviewSkeleton() {
   )
 }
 
-export function Overview({ api, onExpired, refreshKey }: { api: Api; onExpired: () => void; refreshKey: number }) {
+export function Overview({ api, onExpired, refreshKey, navigate }: { api: Api; onExpired: () => void; refreshKey: number; navigate: (tab: string, params?: Record<string, string>) => void }) {
   const load = useCallback(() => api<OverviewData>("overview"), [api])
   const { data, error, loading, reload } = useLoad(load, onExpired, refreshKey)
 
@@ -112,17 +112,17 @@ export function Overview({ api, onExpired, refreshKey }: { api: Api; onExpired: 
 
       <BlurFade delay={0.05} inView={false}>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard
+          <button className="text-left" onClick={() => navigate("analytics")}><StatCard
             label="Registrations"
             value={data.totals.registrations}
             icon={ClipboardListIcon}
             tone="brand"
             trend={daily.map((d) => d.registrations)}
-            hint={`${weekTotal} in the last 7 days`}
-          />
-          <StatCard label="Collected" prefix="$" value={Math.round(data.totals.net_cents / 100)} icon={DollarSignIcon} hint="After refunds, before Stripe fees" />
-          <StatCard label="New training requests" value={data.totals.new_requests} icon={MessageSquareTextIcon} tone="info" hint="From the website form" />
-          <StatCard label="On waitlists" value={data.totals.waiting} icon={HourglassIcon} tone="warning" hint="Waiting for a spot" />
+            hint={`${weekTotal} in the last 7 days · see analytics`}
+          /></button>
+          <button className="text-left" onClick={() => navigate("revenue")}><StatCard label="Collected" prefix="$" value={Math.round(data.totals.net_cents / 100)} icon={DollarSignIcon} hint="After refunds · see revenue" /></button>
+          <button className="text-left" onClick={() => navigate("requests")}><StatCard label="New training requests" value={data.totals.new_requests} icon={MessageSquareTextIcon} tone="info" hint="From the website form" /></button>
+          <button className="text-left" onClick={() => navigate("waitlist")}><StatCard label="On waitlists" value={data.totals.waiting} icon={HourglassIcon} tone="warning" hint="Waiting for a spot" /></button>
         </div>
       </BlurFade>
 
@@ -153,7 +153,9 @@ export function Overview({ api, onExpired, refreshKey }: { api: Api; onExpired: 
             </CardHeader>
             <CardContent className="grid gap-4 lg:grid-cols-2">
               {data.miami.map((g) => (
-                <GroupPanel key={g.grp} g={g} codesActive={data.codes.active} />
+                <button key={g.grp} className="text-left transition-transform hover:-translate-y-0.5" onClick={() => navigate("registrations", { program: `Miami – ${g.label}` })}>
+                  <GroupPanel g={g} codesActive={data.codes.active} />
+                </button>
               ))}
             </CardContent>
           </Card>
@@ -177,7 +179,7 @@ export function Overview({ api, onExpired, refreshKey }: { api: Api; onExpired: 
                   {data.byCamp.map((row) => {
                     const program = row.kind === "miami" ? `Miami – ${row.session}` : `${row.camp} – ${row.session}`
                     return (
-                      <li key={`${row.camp}-${row.session}`} className="space-y-1.5">
+                      <li key={`${row.camp}-${row.session}`} className="hover:bg-muted/40 -mx-2 cursor-pointer space-y-1.5 rounded-md px-2 py-1" onClick={() => navigate("registrations", { program })}>
                         <div className="flex items-center justify-between gap-3 text-sm">
                           <span className="flex min-w-0 items-center gap-2">
                             <ProgramDot program={program} />

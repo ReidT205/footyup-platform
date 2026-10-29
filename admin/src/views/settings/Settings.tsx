@@ -1,0 +1,52 @@
+import { useCallback, useState } from "react"
+
+import type { Api } from "../../api"
+import { useLoad } from "../../useLoad"
+import { PillTabs } from "@/components/app/kit"
+import { ErrorState, PageHeader } from "@/components/app/states"
+import { Card } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { CampsSettings } from "./CampsSettings"
+import { DiscountSettings } from "./DiscountSettings"
+import { EmailSettings } from "./EmailSettings"
+import { AccessCodes, MiamiSettings } from "./MiamiSettings"
+import type { SettingsData } from "./types"
+import { WaiverSettings } from "./WaiverSettings"
+
+type Section = "camps" | "miami" | "codes" | "discounts" | "waivers" | "email"
+const SECTIONS: { value: Section; label: string }[] = [
+  { value: "camps", label: "Camps & sessions" },
+  { value: "miami", label: "Miami combine" },
+  { value: "codes", label: "Access codes" },
+  { value: "discounts", label: "Discounts & promo codes" },
+  { value: "waivers", label: "Waivers" },
+  { value: "email", label: "Email" },
+]
+
+export function Settings({ api, onExpired, refreshKey, params }: { api: Api; onExpired: () => void; refreshKey: number; params: Record<string, string> }) {
+  const [section, setSection] = useState<Section>((SECTIONS.find((s) => s.value === params.section)?.value) ?? "camps")
+  const load = useCallback(() => api<SettingsData>("settings-data"), [api])
+  const { data, error, loading, reload } = useLoad(load, onExpired, refreshKey)
+
+  return (
+    <div className="space-y-6">
+      <PageHeader title="Settings" description="Change prices, spots, dates, codes, discounts, waivers and email without a developer. Changes apply to new checkouts right away." />
+      <PillTabs id="settings" value={section} onChange={setSection} options={SECTIONS} />
+      {section === "email" ? (
+        <EmailSettings api={api} onExpired={onExpired} />
+      ) : loading && !data ? (
+        <Skeleton className="h-96 rounded-xl" />
+      ) : error && !data ? (
+        <Card><ErrorState message={error} onRetry={reload} /></Card>
+      ) : data ? (
+        <>
+          {section === "camps" && <CampsSettings api={api} camps={data.camps} reload={reload} />}
+          {section === "miami" && (data.miami ? <MiamiSettings key={JSON.stringify(data.miami.groups.map((g) => g.taken))} api={api} miami={data.miami} reload={reload} /> : <Card><ErrorState message="Miami isn't set up yet. Run `pnpm miami config` once." /></Card>)}
+          {section === "codes" && <AccessCodes api={api} codes={data.codes} reload={reload} />}
+          {section === "discounts" && <DiscountSettings api={api} data={data} reload={reload} />}
+          {section === "waivers" && <WaiverSettings api={api} data={data} reload={reload} />}
+        </>
+      ) : null}
+    </div>
+  )
+}
