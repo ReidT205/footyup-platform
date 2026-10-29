@@ -5,7 +5,7 @@ brief asks for this to be agreed in the first two days. TypeScript types and
 validation for every shape below live in [`src/contract.ts`](../src/contract.ts);
 the front end can copy that file to get the same types.
 
-**Status: DRAFT v0.2** (Miami updated from the client Kickoff Form, Oct 28). Anything here can change until both sides sign off.
+**Status: DRAFT v0.3** (Oct 29: promo codes, waitlist offers; Miami from the Kickoff Form). Anything here can change until both sides sign off.
 After that, changes are additive only (new optional fields), or agreed in writing.
 
 ## Conventions
@@ -32,7 +32,8 @@ After that, changes are additive only (new optional fields), or agreed in writin
 | 404 | `session_not_found`, `not_found` |
 | 409 | `session_closed`, `session_full`, `camp_info_only`, `group_full`, `group_closed`, `registration_not_open` |
 | 413 | `payload_too_large` |
-| 422 | `waiver_required` (with `details.currentWaiverId`) |
+| 422 | `waiver_required` (with `details.currentWaiverId`), `promo_invalid` (message says why: expired, used up, doesn't apply) |
+| 409 | `waitlist_offer_invalid` (offer expired or doesn't match) |
 | 429 | `rate_limited` (with a `Retry-After` header) |
 | 502 | `payment_provider_error` (Stripe unavailable; safe to retry) |
 | 503 | `pricing_not_configured` (Miami price not set yet) |
@@ -187,6 +188,19 @@ allows 10 attempts per 10 minutes per IP.
 - Possible errors: `403 access_code_required | access_code_invalid`, `409 group_full`
   (`details.group`), `409 registration_not_open` (`details.opensAt`, `details.closesAt`), `503 pricing_not_configured`,
   `422 waiver_required`, `400 validation_failed` (per-field `details.issues`).
+
+## Discounts and waitlist offers (both checkouts)
+
+Both `POST /api/checkout/camp` and `POST /api/miami/checkout` also accept:
+
+- `promoCode` (optional): checked on the server. The Stripe page shows the discounted line, labelled with the code.
+  The sibling discount (2nd+ child) applies automatically when the client has turned it on.
+- `waitlistToken` (optional): from a waitlist offer link (`?waitlist=<token>`). It uses the spot held for that family.
+
+### `GET /api/waitlist?token=<token>`
+
+Returns `{ "valid": true, "program": "...", "sessionId": "...", "miamiGroup": null, "spots": 1, "expiresAt": "...", "parent": { "name", "email", "phone", "town" } }`
+or `{ "valid": false }`. Use it to prefill the form on the page the offer email links to (`waitlist_session_path` / `waitlist_miami_path` settings).
 
 ## Forms
 

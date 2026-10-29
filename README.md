@@ -11,19 +11,20 @@ Information Form (Oct 18, 2026)** taking priority where they differ.
 
 ## Status
 
-| Piece | Status |
-| --- | --- |
-| Database for all three stages, Row Level Security (only the two admins can read) | Done, tested |
-| **D1** Stripe webhook: signature check, no duplicates, refunds, expired checkouts, old-checkout payments kept | Done, tested |
-| **D2** Camp checkout: camps as data, several kids and weeks per payment, info-only camps, optional capacity | Done, tested |
-| **D3** Miami checkout: Kickoff Form fields, boys/girls caps enforced in the database, holds, access code, 200 shared reserved spots, opens Nov 1 10:00 AM, closes Mar 1 | Done, tested |
-| **D4** Private training form endpoint: validation, spam blocking, rate limits, email notification | Done, tested |
-| Admin dashboard at `/admin` (Kickoff Form: "login access to view the registrations" on Nov 1): overview, registrations with filters/detail/CSV, training requests, waitlist | Done, tested |
-| Waitlist sign-up, waiver versioning with "not collected" flag | Done, tested |
-| Stage 2 (contact import, campaign email, editing camps in the dashboard), Stage 3 | Not started |
+Every requirement in the brief and the Kickoff Form is listed in
+[`docs/requirements-checklist.md`](docs/requirements-checklist.md) with where it lives
+and what's still waiting on the client. In short:
 
-The client-facing test list is [`docs/stage-1-checklist.md`](docs/stage-1-checklist.md).
-Open questions and dates are in [`docs/open-decisions.md`](docs/open-decisions.md).
+- **Stage 1:** done and tested. Payment saving, camp checkout, Miami checkout and the private training form.
+- **Dashboard at `/admin`:**
+  - Overview, analytics and revenue (with refunds and cancellations).
+  - Registrations, rosters, waitlist and private training.
+  - Email: send to groups, contacts with import, and history.
+  - Settings: camps and sessions, Miami, access codes, discounts and promo codes, waivers, email.
+- **Email through Brevo:** campaigns, two-way unsubscribe sync, confirmations, reminders and waitlist offers. See [`docs/email-guide.md`](docs/email-guide.md).
+- **Not built:** multi-factor login for admins (recommended next), plus template screenshots from Gmail/Outlook/Apple Mail, which need the live Brevo account.
+
+Client-facing test list: [`docs/stage-1-checklist.md`](docs/stage-1-checklist.md). Open questions: [`docs/open-decisions.md`](docs/open-decisions.md).
 
 ## Run it locally
 
@@ -48,7 +49,7 @@ and **Abandon** buttons that send correctly signed webhooks. Locally, the
 dashboard uses a dev login (email only). On Vercel it requires Supabase Auth.
 
 ```bash
-pnpm test            # throwaway database "footyup_test", 59 acceptance tests
+pnpm test            # throwaway database "footyup_test", 90 acceptance tests
 pnpm typecheck       # API + dashboard
 pnpm licenses:check  # every package must be MIT/Apache/BSD/ISC (Build Agreement §4)
 ```
@@ -105,6 +106,9 @@ Names only. Values go in Vercel project settings, never in the repo.
 | `SUPABASE_SERVICE_ROLE_KEY` | scripts only | Inviting admins. **Never on Vercel.** |
 | `PUBLIC_ADMIN_URL` | scripts | Where invite links land, e.g. `https://<api domain>/admin/` |
 | `CORS_ALLOWED_ORIGINS` | Vercel | Site domains allowed to call the API from the browser |
+| `BREVO_WEBHOOK_SECRET` | Vercel | Secret in the Brevo webhook URL (unsubscribe/bounce sync) |
+| `PUBLIC_API_URL` | Vercel, optional | Public origin of this API for unsubscribe links (defaults to the admin URL's origin) |
+| `EMAIL_DOMAIN` | Vercel, optional | Sending domain to authenticate (defaults to `EMAIL_FROM`'s domain) |
 | `BREVO_API_KEY` | Vercel | Email. Without it, emails are logged (subject only), not sent |
 | `EMAIL_FROM`, `EMAIL_FROM_NAME` | Vercel | Sender (must be verified in Brevo) |
 | `CRON_SECRET` | Vercel | Auth for `/api/cron/cleanup` |

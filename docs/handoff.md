@@ -34,6 +34,7 @@ Never in the repo.
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API (secret key). Scripts only, never on Vercel |
 | `PUBLIC_ADMIN_URL` | The deployed dashboard URL, e.g. `https://<api domain>/admin/` |
 | `CORS_ALLOWED_ORIGINS` | The public site's domains, comma-separated |
+| `BREVO_WEBHOOK_SECRET` | Any long random string; also pasted into the Brevo webhook URL |
 | `CRON_SECRET` | Any long random string; Vercel sends it to cron routes |
 | `RATE_LIMIT_SALT` | Any long random string |
 
@@ -65,26 +66,25 @@ Copied UI component code (ReUI, shadcn/ui, Magic UI) is credited in `THIRD_PARTY
 
 ## How to
 
-Viewing registrations, Miami spots, training requests and the waitlist happens in the dashboard at `/admin`.
-Until Stage 2 adds editing to the dashboard, changes run from a terminal with `DIRECT_DATABASE_URL` set.
+Everything below is in the dashboard at `/admin` unless noted.
 
-| Task | Command |
+| Task | Where |
 | --- | --- |
-| Add or edit a camp or session | Edit `data/camps.json`, then `pnpm camps:upsert` |
-| Change Miami caps, reserved spots, prices, dates | Edit `data/miami.json`, then `pnpm miami config` |
-| Set the Miami access code | `pnpm miami code add <code> --label "Host families"` |
-| Open Miami to the public on a date | `pnpm miami code end-at 2026-11-08T00:00:00-05:00` |
-| Open Miami to the public now | `pnpm miami code off` |
-| See spots left | `pnpm miami status` |
-| Publish waiver wording | `pnpm waiver add --flow miami --title "..." --file waiver.txt` |
-| Change who gets private training emails | `pnpm settings set notify_email '"owner@example.com"'` |
-| Give someone dashboard access | `pnpm admins add <email>` (sends an invite) |
-| Remove dashboard access | `pnpm admins remove <email>` |
-| Export registrations | Dashboard → Registrations → filter → Export CSV |
-| Import contacts | *Stage 2* |
-| Send a campaign | *Stage 2* |
-| Create a promo code | *Stage 3* |
-| Print a roster | *Stage 3* |
+| Add or edit a camp or session (dates, price, early-bird, spot limit, open/closed, reminders) | Settings → Camps & sessions |
+| Change Miami limits, prices, dates, reserved spots, opening/closing times, size lists | Settings → Miami combine |
+| Set, end-date or turn off the Miami access code | Settings → Access codes |
+| Create or disable a promo code; set the sibling discount; waitlist hold time | Settings → Discounts & promo codes |
+| Publish waiver wording and require it | Settings → Waivers |
+| Import contacts | Contacts → Import contacts |
+| Send a campaign | Send email (see `docs/email-guide.md`) |
+| See past sends and automatic emails | Email history |
+| Mailing address, reply-to, notification address, automatic emails | Settings → Email |
+| Print a roster | Rosters → pick a session → Print roster |
+| Notify the next waitlist family / remove one | Waitlist |
+| Cancel or restore a registration | Registrations → open it → Cancel registration |
+| Export registrations, contacts, payments, revenue, analytics | "Export CSV" on each page |
+| Revenue reconciliation | Revenue page: Collected and Refunds match Stripe for the same dates (before fees) |
+| Give someone dashboard access | Terminal: `pnpm admins add <email>` |
 | Restore a backup | Supabase → Database → Backups → choose a point in time → Restore (Pro plan). Restoring replaces the whole database, so export recent registrations first. |
 
 ## Handoff checklist (Agreement §10)
