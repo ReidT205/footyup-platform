@@ -66,6 +66,16 @@ describe("settings changes reach checkout immediately", () => {
     expect((await campPay([{ name: "Kid Two", age: 9, sessionIds: [sessionId] }])).body).toMatchObject({ error: "session_closed" })
   })
 
+  it("keeps the site's camp and session ids exactly as entered, and refuses duplicates", async () => {
+    const camp = { name: "Dover Summer Camp", host: "Dover", kind: "summer", infoOnly: false, active: true, description: null, infoUrl: "", sortOrder: 4, slug: "dover_2027", siteRoute: "summerCamp/dover" }
+    const { id: campId } = await adminJson("camp-save", camp)
+    await adminJson("session-save", sessionBody({ id: undefined, campId, name: "Week 1", priceCents: 42500, slug: "week1" }))
+    const [row] = await db`select c.slug as camp, c.site_route, s.slug as session from public.camps c join public.sessions s on s.camp_id = c.id where c.id = ${campId}`
+    expect(row).toMatchObject({ camp: "dover_2027", site_route: "summerCamp/dover", session: "week1" })
+    expect((await adminCall("camp-save", camp)).status).toBe(422)
+    expect((await adminCall("camp-save", { ...camp, slug: "Dover 2027" })).status).toBe(400)
+  })
+
   it("refuses a capacity below what's already taken", async () => {
     const [s] = await db`select camp_id from public.sessions where id = ${week1}`
     await campPay([{ name: "A B", age: 9, sessionIds: [week1] }, { name: "C D", age: 9, sessionIds: [week1] }])

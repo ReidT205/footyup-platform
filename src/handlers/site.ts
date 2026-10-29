@@ -5,7 +5,7 @@
  * shapes the site's code already expects ({ url }, { error }, { success }).
  */
 import { z } from "zod"
-import { Email, MiamiCheckoutRequest, Phone } from "../contract.js"
+import { MiamiCheckoutRequest } from "../contract.js"
 import { startCheckout } from "../lib/checkout.js"
 import type { Db } from "../lib/db.js"
 import type { Deps } from "../lib/deps.js"
@@ -18,6 +18,13 @@ import { checkCode, codesActive, currentTier, isOpen, loadAvailability, loadEven
 import { notifyTrainingRequest } from "./private-training.js"
 
 const s = (max: number) => z.string().trim().max(max)
+const Email = z.string({ error: "Please enter a valid email address." }).trim().toLowerCase().pipe(z.email({ error: "Please enter a valid email address." }).max(254))
+const Phone = z
+  .string({ error: "Please enter a valid phone number." })
+  .trim()
+  .max(32, "Please enter a valid phone number.")
+  .regex(/^[0-9+().\-\s]+$/, "Please enter a valid phone number.")
+  .refine((v) => v.replace(/\D/g, "").length >= 10, "Please enter a valid phone number.")
 const need = (max: number, label: string) => z.string({ error: `Please fill in ${label}.` }).trim().min(1, `Please fill in ${label}.`).max(max)
 
 interface CampRow { id: string; kind: string; site_route: string | null; info_only: boolean }
@@ -110,7 +117,7 @@ async function checkout(req: Request, deps: Deps): Promise<Response> {
       const shape = MiamiCheckoutRequest.shape
       const check = shape.shippingAddress.safeParse(input.shippingAddress)
       if (!check.success) return json({ error: "Please check the shipping address." }, 400)
-      const result = await runMiamiCheckout(deps, input, { successPath: "/success", cancelPath })
+      const result = await runMiamiCheckout(deps, input, { successPath: "/success", cancelPath, allowPromotionCodes: true })
       return json({ url: result.checkoutUrl })
     }
 
@@ -129,7 +136,7 @@ async function checkout(req: Request, deps: Deps): Promise<Response> {
         parent: { name: f.parentName, email: f.parentEmail, town: f.town },
         players: [{ name: f.playerName, age: f.playerAge, sessionIds: slugs.map((slug) => sessions.find((x) => x.slug === slug)!.id) }],
       },
-      { successPath: "/success", cancelPath, collectPhone: true },
+      { successPath: "/success", cancelPath, collectPhone: true, allowPromotionCodes: true },
     )
     return json({ url: result.checkoutUrl })
   } catch (err) {
@@ -231,6 +238,7 @@ async function checkoutTraining(req: Request, deps: Deps): Promise<Response> {
       payload: { packageId: pkg.id, packageName: pkg.name, customFields },
       lines: [{ name: pkg.name, unitAmountCents: pkg.cents, quantity: 1 }],
       collectPhone: true,
+      allowPromotionCodes: true,
       customFields,
       holdMinutes: 60,
       successPath: "/success",
@@ -301,10 +309,14 @@ async function catalog(_req: Request, deps: Deps): Promise<Response> {
 /** /api/site/<action> */
 export async function site(req: Request, deps: Deps): Promise<Response> {
   const action = new URL(req.url).pathname.split("/").filter(Boolean).at(-1)
-  if (action === "checkout" && req.method === "POST") return checkout(req, deps)
-  if (action === "camp-access" && (req.method === "GET" || req.method === "POST")) return campAccess(req, deps)
-  if (action === "inquiry" && req.method === "POST") return inquiry(req, deps)
-  if (action === "checkout-training" && req.method === "POST") return checkoutTraining(req, deps)
-  if (action === "catalog" && req.method === "GET") return catalog(req, deps)
-  throw new ApiError(404, "not_found", "Not found")
+  try {
+    if (action === "checkout" && req.method === "POST") return await checkout(req, deps)
+    if (action === "camp-access" && (req.method === "GET" || req.method === "POST")) return await campAccess(req, deps)
+    if (action === "inquiry" && req.method === "POST") return await inquiry(req, deps)
+    if (action === "checkout-training" && req.method === "POST") return await checkoutTraining(req, deps)
+    if (action === "catalog" && req.method === "GET") return await catalog(req, deps)
+    throw new ApiError(404, "not_found", "Not found")
+  } catch (err) {
+    return siteError(err)
+  }
 }

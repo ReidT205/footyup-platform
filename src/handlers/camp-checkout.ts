@@ -36,6 +36,7 @@ export interface CheckoutExtras {
   /** Ask Stripe Checkout for anything the form didn't collect. */
   collectPhone?: boolean;
   customFields?: CheckoutCustomField[];
+  allowPromotionCodes?: boolean;
 }
 
 export async function runCampCheckout(deps: Deps, body: CampCheckoutInput, extras: CheckoutExtras = {}) {
@@ -120,6 +121,7 @@ export async function runCampCheckout(deps: Deps, body: CampCheckoutInput, extra
     lines: stripeLines(priced, promo),
     customerEmail: body.parent.email,
     collectPhone: extras.collectPhone ?? !body.parent.phone,
+    allowPromotionCodes: extras.allowPromotionCodes && !promo,
     customFields: extras.customFields,
     holdMinutes: settings.camp_hold_minutes,
     successPath: extras.successPath ?? body.successPath ?? settings.default_success_path,

@@ -36,7 +36,8 @@ export async function legacyRegistration(
   const [camp] = await tx<{ id: string; kind: string }[]>`select id, kind from public.camps where slug = ${campSlug}`
   if (!camp) return null
 
-  const total = Number(session.amount_total ?? 0)
+  // Gross price; insertRegistrations spreads Stripe's discount over the lines.
+  const total = Number(session.amount_subtotal ?? session.amount_total ?? 0)
   const email = str(md.parent_email) ?? str(session.customer_details?.email) ?? ""
   const parentName = str(md.parent_name) ?? str(session.customer_details?.name) ?? ""
   const pn = splitName(parentName)
@@ -61,7 +62,7 @@ export async function legacyRegistration(
           campId: camp.id,
           miamiGroup: sessionSlug,
           priceCents: total,
-          discountCents: Number(session.total_details?.amount_discount ?? 0),
+          discountCents: 0,
           player: {
             name: player, firstName: kn.first, lastName: kn.last, age, sex: sessionSlug === "boys" ? "boy" : "girl",
             email: str(md.player_email) ?? undefined,

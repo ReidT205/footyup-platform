@@ -102,7 +102,14 @@ async function insertRegistrations(tx: Db, opts: { intentId: string; paymentId: 
   const parent = { ...payload.parent, phone: payload.parent.phone || session.customer_details?.phone || null };
   const emergency = parent.emergencyPhone ?? answers.emergency_phone ?? null;
   const { waiver } = payload;
-  for (const line of payload.lines) {
+  // line.priceCents is the price before any Stripe promotion code, which applies to
+  // the whole session; spread that discount over the lines by price.
+  const stripeDiscount = Number(session.total_details?.amount_discount ?? 0);
+  const prices = payload.lines.map((l) => Math.max(l.priceCents ?? 0, 0));
+  const priceTotal = prices.reduce((a, b) => a + b, 0);
+  const shares = prices.map((n) => (priceTotal ? Math.floor((stripeDiscount * n) / priceTotal) : 0));
+  if (shares.length) shares[shares.length - 1]! += stripeDiscount - shares.reduce((a, b) => a + b, 0);
+  for (const [i, line] of payload.lines.entries()) {
     const p = line.player;
     const addr = p.shippingAddress;
     await tx`
@@ -124,7 +131,7 @@ async function insertRegistrations(tx: Db, opts: { intentId: string; paymentId: 
         ${addr?.line1 ?? null}, ${addr?.line2 ?? null}, ${addr?.city ?? null}, ${addr?.state ?? null}, ${addr?.postalCode ?? null},
         ${tx.json({ ...payload.extra, ...p.extra } as never)},
         ${waiver.status}, ${waiver.waiverId}, ${waiver.acceptedAt}, ${waiver.acceptedName},
-        ${line.priceCents ?? null}, ${line.discountCents ?? 0}
+        ${line.priceCents === undefined || line.priceCents === null ? null : line.priceCents - shares[i]!}, ${(line.discountCents ?? 0) + shares[i]!}
       )
       on conflict (intent_id, line_no) do nothing`;
   }

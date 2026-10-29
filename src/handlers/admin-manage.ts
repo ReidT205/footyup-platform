@@ -22,6 +22,23 @@ function slugify(name: string) {
   return name.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "item"
 }
 
+const SiteId = z
+  .string()
+  .trim()
+  .regex(/^[a-z0-9][a-z0-9_-]{0,79}$/, "Use lowercase letters, numbers, - or _ (e.g. dover_2027)")
+  .optional()
+  .or(z.literal("").transform(() => undefined))
+
+/** A chosen id must match the live site's code exactly, so it is never renamed to make it unique. */
+async function chosenSlug(tx: Db, slug: string, table: "camps" | "sessions", campId?: string) {
+  const taken =
+    table === "camps"
+      ? await tx`select 1 from public.camps where slug = ${slug}`
+      : await tx`select 1 from public.sessions where camp_id = ${campId!} and slug = ${slug}`
+  if (taken.length) throw new ApiError(422, "validation_failed", `The id "${slug}" is already used.`)
+  return slug
+}
+
 async function uniqueSlug(tx: Db, base: string, table: "camps" | "sessions", campId?: string) {
   for (let i = 0; i < 50; i++) {
     const slug = i ? `${base}-${i + 1}` : base
@@ -101,6 +118,7 @@ const CampInput = z.object({
   infoUrl: z.union([z.url(), z.literal(""), z.null()]).transform((v) => v || null),
   sortOrder: z.int().min(0).max(999).default(0),
   siteRoute: nullableText(120).optional(),
+  slug: SiteId,
 })
 
 const campSave: Handler = async (req, deps) => {
@@ -115,7 +133,7 @@ const campSave: Handler = async (req, deps) => {
       if (!rows.length) throw new ApiError(404, "not_found", "Camp not found.")
       return c.id
     }
-    const slug = await uniqueSlug(tx, slugify(c.name), "camps")
+    const slug = c.slug ? await chosenSlug(tx, c.slug, "camps") : await uniqueSlug(tx, slugify(c.name), "camps")
     const [row] = await tx`
       insert into public.camps (slug, name, host, kind, info_only, active, description, info_url, sort_order, site_route)
       values (${slug}, ${c.name}, ${c.host}, ${c.kind}, ${c.infoOnly}, ${c.active}, ${c.description}, ${c.infoUrl}, ${c.sortOrder}, ${c.siteRoute ?? null})
@@ -145,6 +163,7 @@ const SessionInput = z
     reminderDays: z.array(z.int().min(0).max(60)).max(5),
     sortOrder: z.int().min(0).max(999).default(0),
     closesAt: z.iso.datetime({ offset: true }).nullable().default(null),
+    slug: SiteId,
   })
   .refine((s) => !s.endsOn || !s.startsOn || s.endsOn >= s.startsOn, { message: "End date must be on or after the start date", path: ["endsOn"] })
   .refine((s) => s.ageMax === null || s.ageMin === null || s.ageMax >= s.ageMin, { message: "Max age must be at least the min age", path: ["ageMax"] })
@@ -174,7 +193,7 @@ const sessionSave: Handler = async (req, deps) => {
       if (!rows.length) throw new ApiError(404, "not_found", "Session not found.")
       return s.id
     }
-    const slug = await uniqueSlug(tx, slugify(s.name), "sessions", s.campId)
+    const slug = s.slug ? await chosenSlug(tx, s.slug, "sessions", s.campId) : await uniqueSlug(tx, slugify(s.name), "sessions", s.campId)
     const [row] = await tx`
       insert into public.sessions (camp_id, slug, name, starts_on, ends_on, start_time, location, age_min, age_max, price_cents,
                                    early_bird_price_cents, early_bird_until, capacity, status, info_text, reminder_days, sort_order, closes_at)

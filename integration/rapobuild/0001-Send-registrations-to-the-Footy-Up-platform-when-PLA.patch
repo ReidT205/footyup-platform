@@ -1,0 +1,285 @@
+From d1438cd0f339d6d16e408886139da9e922257bdd Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Thu, 29 Oct 2026 22:01:23 +0000
+Subject: [PATCH] Send registrations to the Footy Up platform when
+ PLATFORM_API_URL is set
+
+Every form (camp and Miami checkout, the Miami access-code gate, private
+training checkout and inquiries) forwards its request unchanged to the
+platform's /api/site/* endpoints, so it lands in Supabase and the admin
+dashboard. Pages pick up live prices from /api/catalog. With
+PLATFORM_API_URL unset, the original code runs exactly as before.
+---
+ .env.example             |  7 ++++++
+ api/_platform.js         | 48 ++++++++++++++++++++++++++++++++++++++++
+ api/camp-access.js       |  2 ++
+ api/catalog.js           | 13 +++++++++++
+ api/checkout-training.js |  2 ++
+ api/checkout.js          |  2 ++
+ api/inquiry.js           |  4 ++++
+ src/app.jsx              | 11 +++++++++
+ src/camps.jsx            | 38 ++++++++++++++++++++++++++++++-
+ src/private.jsx          | 11 ++++-----
+ 10 files changed, 132 insertions(+), 6 deletions(-)
+ create mode 100644 api/_platform.js
+ create mode 100644 api/catalog.js
+
+diff --git a/.env.example b/.env.example
+index 363b93b..350c3e0 100644
+--- a/.env.example
++++ b/.env.example
+@@ -1,3 +1,10 @@
++# Footy Up platform (registrations, dashboard, Supabase). When set, every form
++# on the site goes through the platform and shows up in the admin dashboard.
++# Leave empty to use the original checkout code in api/ (rollback).
++PLATFORM_API_URL=
++# Shared with the platform's SITE_API_KEY so it can rate-limit per family.
++SITE_API_KEY=
++
+ # Stripe (required for camp registration & private training checkout)
+ STRIPE_SECRET_KEY=sk_test_...
+ 
+diff --git a/api/_platform.js b/api/_platform.js
+new file mode 100644
+index 0000000..02e2da2
+--- /dev/null
++++ b/api/_platform.js
+@@ -0,0 +1,48 @@
++// Hand-off to the Footy Up registration platform (Supabase + admin dashboard).
++//
++// When PLATFORM_API_URL is set, each api/*.js function sends the request body
++// it received, unchanged, to the platform's /api/site/<action>, and passes the
++// platform's answer straight back. Registrations, payments, training requests
++// and contacts are then saved in Supabase and show up in the dashboard, and the
++// spot limits, prices and access codes set in the dashboard apply here.
++//
++// With PLATFORM_API_URL unset, every function runs its original code below the
++// forward() call, exactly as before. Unsetting it is the rollback.
++const PLATFORM = (process.env.PLATFORM_API_URL || '').replace(/\/+$/, '');
++
++const platformEnabled = () => Boolean(PLATFORM);
++
++function clientIp(req) {
++  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
++  return fwd || String(req.headers['x-real-ip'] || '') || (req.socket && req.socket.remoteAddress) || '';
++}
++
++// Returns true once it has answered the request.
++async function forward(req, res, action) {
++  if (!PLATFORM) return false;
++  const query = req.method === 'GET' && req.url && req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
++  try {
++    const upstream = await fetch(`${PLATFORM}/api/site/${action}${query}`, {
++      method: req.method,
++      headers: {
++        'content-type': 'application/json',
++        // Lets the platform rate-limit per family rather than per site server.
++        'x-site-key': process.env.SITE_API_KEY || '',
++        'x-footyup-client-ip': clientIp(req),
++      },
++      body: req.method === 'GET' ? undefined : JSON.stringify(req.body || {}),
++      signal: AbortSignal.timeout(15000),
++    });
++    const text = await upstream.text();
++    const cache = upstream.headers.get('cache-control');
++    if (cache) res.setHeader('Cache-Control', cache);
++    res.setHeader('Content-Type', 'application/json; charset=utf-8');
++    res.status(upstream.status).send(text);
++  } catch (err) {
++    console.error(`platform ${action} failed:`, err && err.message);
++    res.status(502).json({ error: 'Registration is temporarily unavailable. Please try again in a minute.' });
++  }
++  return true;
++}
++
++module.exports = { forward, platformEnabled };
+diff --git a/api/camp-access.js b/api/camp-access.js
+index 3dd1043..f17a780 100644
+--- a/api/camp-access.js
++++ b/api/camp-access.js
+@@ -1,4 +1,5 @@
+ const { getCamp, registrationStatus, checkAccessCode } = require('./_camps');
++const { forward } = require('./_platform');
+ 
+ // Registration gate for timed / code-locked camps (the Miami combine).
+ //
+@@ -10,6 +11,7 @@ const { getCamp, registrationStatus, checkAccessCode } = require('./_camps');
+ // decides what the page shows — it can't be used to skip the gate.
+ module.exports = async (req, res) => {
+   res.setHeader('Cache-Control', 'no-store');
++  if ((req.method === 'GET' || req.method === 'POST') && (await forward(req, res, 'camp-access'))) return;
+ 
+   const campId = req.method === 'GET' ? (req.query || {}).campId : (req.body || {}).campId;
+   const camp = getCamp(campId);
+diff --git a/api/catalog.js b/api/catalog.js
+new file mode 100644
+index 0000000..e688c30
+--- /dev/null
++++ b/api/catalog.js
+@@ -0,0 +1,13 @@
++const { forward } = require('./_platform');
++
++// Live prices, spots and open/closed state from the admin dashboard, so the
++// pages show what Stripe will charge. Without the platform the pages keep the
++// display prices in src/camps.jsx.
++module.exports = async (req, res) => {
++  if (req.method !== 'GET') {
++    return res.status(405).json({ error: 'Method not allowed' });
++  }
++  if (await forward(req, res, 'catalog')) return;
++  res.setHeader('Cache-Control', 'no-store');
++  return res.status(404).json({ error: 'No live catalog' });
++};
+diff --git a/api/checkout-training.js b/api/checkout-training.js
+index abd5977..b5d6fa8 100644
+--- a/api/checkout-training.js
++++ b/api/checkout-training.js
+@@ -1,4 +1,5 @@
+ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
++const { forward } = require('./_platform');
+ 
+ const PACKAGES = {
+   individual_5:  { name: "Individual — 5 Sessions (1 hr 30 min each)",  unit_amount: 55000 },
+@@ -12,6 +13,7 @@ module.exports = async (req, res) => {
+   if (req.method !== 'POST') {
+     return res.status(405).json({ error: 'Method not allowed' });
+   }
++  if (await forward(req, res, 'checkout-training')) return;
+ 
+   const { packageId } = req.body || {};
+   const pkg = PACKAGES[packageId];
+diff --git a/api/checkout.js b/api/checkout.js
+index 1e13921..27915e7 100644
+--- a/api/checkout.js
++++ b/api/checkout.js
+@@ -1,5 +1,6 @@
+ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+ const { getCamp, registrationStatus, unitAmount, checkAccessCode } = require('./_camps');
++const { forward } = require('./_platform');
+ 
+ // Pricing, sessions, age ranges and access rules live in ./_camps.js, which
+ // src/camps.jsx mirrors for display. Nothing about what is charged is taken
+@@ -96,6 +97,7 @@ module.exports = async (req, res) => {
+   if (req.method !== 'POST') {
+     return fail(res, 405, 'Method not allowed');
+   }
++  if (await forward(req, res, 'checkout')) return;
+ 
+   const body = req.body || {};
+   const camp = getCamp(body.campId);
+diff --git a/api/inquiry.js b/api/inquiry.js
+index 35908d5..9f21c09 100644
+--- a/api/inquiry.js
++++ b/api/inquiry.js
+@@ -1,7 +1,11 @@
++const { forward } = require('./_platform');
++
+ module.exports = async (req, res) => {
+   if (req.method !== 'POST') {
+     return res.status(405).json({ error: 'Method not allowed' });
+   }
++  // The platform saves the inquiry and emails the coaches; Telegram is the fallback.
++  if (await forward(req, res, 'inquiry')) return;
+ 
+   const { name, email, phone, players, bundle, ages, notes } = req.body || {};
+ 
+diff --git a/src/app.jsx b/src/app.jsx
+index 7b88dc5..432d5e3 100644
+--- a/src/app.jsx
++++ b/src/app.jsx
+@@ -47,6 +47,17 @@ const App = () => {
+     document.title = pageTitle(route);
+   }, [route.page, route.sub]);
+ 
++  // Re-render once live prices from the dashboard arrive (see applyCatalog).
++  const [, setCatalogVersion] = React.useState(0);
++  React.useEffect(() => {
++    fetch("/api/catalog")
++      .then((r) => (r.ok ? r.json() : null))
++      .then((catalog) => {
++        if (applyCatalog(catalog)) setCatalogVersion((v) => v + 1);
++      })
++      .catch(() => {});
++  }, []);
++
+   const setPage = (p, sub = "") => {
+     if (!VALID_PAGES.includes(p)) { p = "home"; sub = ""; }
+     const hash = sub ? `${p}/${encodeURIComponent(sub)}` : p;
+diff --git a/src/camps.jsx b/src/camps.jsx
+index 43dd957..f2ad981 100644
+--- a/src/camps.jsx
++++ b/src/camps.jsx
+@@ -392,8 +392,44 @@ const campPrice = (c, now = Date.now()) => {
+ };
+ const formatUSD = (n) => `$${Number(n).toLocaleString("en-US")}`;
+ 
++// Live prices from the admin dashboard (GET /api/catalog). Rewrites the prices
++// above, including the ones inside labels like "Week 1 — July 12–16 · $415",
++// so the cards, forms and checkout all agree. Returns true if anything changed.
++const swapPrice = (text, from, to) =>
++  typeof text === "string" && from !== to ? text.split(formatUSD(from)).join(formatUSD(to)) : text;
++const applyCatalog = (catalog) => {
++  if (!catalog || typeof catalog !== "object") return false;
++  let changed = false;
++  for (const c of CAMP_LIST) {
++    const live = catalog.camps && catalog.camps[c.id];
++    if (live && Array.isArray(c.sessions)) {
++      for (const s of c.sessions) {
++        const ls = live.sessions && live.sessions[s.value];
++        if (!ls || typeof ls.price !== "number" || ls.price === s.price) continue;
++        s.label = swapPrice(s.label, s.price, ls.price);
++        if (c.price === s.price) {
++          c.priceLabel = swapPrice(c.priceLabel, c.price, ls.price);
++          c.price = ls.price;
++        }
++        s.price = ls.price;
++        changed = true;
++      }
++    }
++    const m = catalog.miami;
++    if (m && m.id === c.id && Array.isArray(m.priceTiers) && m.priceTiers.length && Array.isArray(c.priceTiers)) {
++      c.priceTiers = m.priceTiers.map((t, i) => ({ ...(c.priceTiers[i] || {}), until: t.until || undefined, price: t.price }));
++      changed = true;
++    }
++  }
++  if (catalog.trainingPackages) {
++    window.TRAINING_PRICES = Object.fromEntries(Object.entries(catalog.trainingPackages).map(([id, p]) => [id, formatUSD(p.price)]));
++    changed = true;
++  }
++  return changed;
++};
++
+ Object.assign(window, {
+   SHOW_MIAMI, CAMP_LIST, HOME_CAMP_ORDER, SUMMER_CAMPS,
+   campById, summerCampBySlug, campRoute,
+-  campRegistrationStatus, campRegistrationOpen, campPriceTier, campPrice, formatUSD,
++  campRegistrationStatus, campRegistrationOpen, campPriceTier, campPrice, formatUSD, applyCatalog,
+ });
+diff --git a/src/private.jsx b/src/private.jsx
+index 72d245c..de18725 100644
+--- a/src/private.jsx
++++ b/src/private.jsx
+@@ -14,14 +14,15 @@ const PrivateTraining = ({ setPage }) => {
+     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+   };
+ 
++  const live = (id, fallback) => (window.TRAINING_PRICES && window.TRAINING_PRICES[id]) || fallback;
+   const individual = [
+-    { count: "5 Sessions",  price: "$550",   packageId: "individual_5" },
+-    { count: "7 Sessions",  price: "$640",   packageId: "individual_7" },
+-    { count: "10 Sessions", price: "$910",   packageId: "individual_10" },
++    { count: "5 Sessions",  price: live("individual_5", "$550"),   packageId: "individual_5" },
++    { count: "7 Sessions",  price: live("individual_7", "$640"),   packageId: "individual_7" },
++    { count: "10 Sessions", price: live("individual_10", "$910"),   packageId: "individual_10" },
+   ];
+   const group2 = [
+-    { count: "5 Sessions", price: "$850",   packageId: "group2_5" },
+-    { count: "7 Sessions", price: "$1,000", packageId: "group2_7" },
++    { count: "5 Sessions", price: live("group2_5", "$850"),   packageId: "group2_5" },
++    { count: "7 Sessions", price: live("group2_7", "$1,000"), packageId: "group2_7" },
+   ];
+ 
+   const [buying, setBuying] = React.useState(null);
+-- 
+2.43.0
+

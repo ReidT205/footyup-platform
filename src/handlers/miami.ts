@@ -307,6 +307,7 @@ export async function runMiamiCheckout(deps: Deps, body: MiamiCheckoutInput, ext
     lines: stripeLines(priced, promo),
     customerEmail: parent.email,
     collectPhone: extras.collectPhone,
+    allowPromotionCodes: extras.allowPromotionCodes && !promo,
     customFields,
     holdMinutes: event.hold_minutes,
     successPath: extras.successPath ?? body.successPath ?? settings.default_success_path,

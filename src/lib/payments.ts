@@ -23,6 +23,8 @@ export interface CreateCheckoutInput {
   /** Ask for a phone number on the Stripe page (the site's camp form doesn't). */
   collectPhone?: boolean;
   customFields?: CheckoutCustomField[];
+  /** Show Stripe's own promotion-code box (codes made in the Stripe dashboard). */
+  allowPromotionCodes?: boolean;
   successUrl: string;
   cancelUrl: string;
   expiresAt: Date;
@@ -89,6 +91,7 @@ export class StripeGateway implements PaymentsGateway {
         })),
         ...(input.customerEmail ? { customer_email: input.customerEmail } : {}),
         ...(input.collectPhone ? { phone_number_collection: { enabled: true } } : {}),
+        ...(input.allowPromotionCodes ? { allow_promotion_codes: true } : {}),
         ...(input.customFields?.length
           ? {
               custom_fields: input.customFields.slice(0, 3).map((f) => ({

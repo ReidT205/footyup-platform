@@ -153,6 +153,10 @@ const server = createServer(async (nodeReq, nodeRes) => {
     if (url.pathname === "/admin") return send(nodeRes, new Response(null, { status: 308, headers: { location: "/admin/" } }));
     const asset = url.pathname.startsWith("/admin/") ? serveStatic(url.pathname) : null;
     if (asset) return send(nodeRes, asset);
+    if (url.pathname === "/success" || url.pathname === "/cancel") {
+      const ok = url.pathname === "/success";
+      return send(nodeRes, html(`<h1>${ok ? "Payment received" : "Checkout cancelled"}</h1><p>The live site's <code>${url.pathname}</code> page shows here. ${ok ? "The registration is now in the dashboard." : "The held spot is released."}</p><p><a href="/admin/">Open the dashboard</a></p>`));
+    }
     if (url.pathname === "/registration/success") {
       return send(nodeRes, html(`<h1>Registration received</h1><p>Stripe session <code>${url.searchParams.get("session_id") ?? ""}</code>. This placeholder stands in for the success page Ivy Devs builds.</p><p><a href="/">Back</a></p>`));
     }

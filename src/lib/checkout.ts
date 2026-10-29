@@ -16,6 +16,7 @@ export interface StartCheckoutOptions {
   lines: CheckoutLine[];
   customerEmail?: string;
   collectPhone?: boolean;
+  allowPromotionCodes?: boolean;
   customFields?: CheckoutCustomField[];
   holdMinutes: number;
   successPath: string;
@@ -71,6 +72,7 @@ export async function startCheckout(deps: Deps, opts: StartCheckoutOptions): Pro
       lines: opts.lines,
       customerEmail: opts.customerEmail,
       collectPhone: opts.collectPhone,
+      allowPromotionCodes: opts.allowPromotionCodes,
       customFields: opts.customFields,
       successUrl: withSessionId(env.siteUrl, opts.successPath),
       cancelUrl: new URL(opts.cancelPath, env.siteUrl).toString(),

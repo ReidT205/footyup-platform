@@ -3,8 +3,14 @@
 The back end and admin dashboard for Footy Up's registrations: the database,
 the serverless API behind camp checkout, the Miami combine checkout and the
 private training form, the Stripe webhook, and the dashboard where Alex and
-Chris view registrations. The public pages are built by Ivy Devs and call this
-API. See [`docs/api-contract.md`](docs/api-contract.md).
+Chris view registrations.
+
+The public site is the existing footyupp.net (repo `rapobuild`). Its `api/*.js`
+functions forward every form to this platform's `/api/site/*` endpoints, so
+registrations, payments, training requests and contacts land in Supabase and the
+dashboard. That change to the site is a ready-to-apply patch in
+[`integration/rapobuild/`](integration/rapobuild/README.md). The general API for
+other front ends is in [`docs/api-contract.md`](docs/api-contract.md).
 
 Requirements come from the Developer Brief, with the client's **Kickoff
 Information Form (Oct 18, 2026)** taking priority where they differ.
@@ -21,6 +27,9 @@ and what's still waiting on the client. In short:
   - Registrations, rosters, waitlist and private training.
   - Email: send to groups, contacts with import, and history.
   - Settings: camps and sessions, Miami, access codes, discounts and promo codes, waivers, email.
+- **Live site connected:** the site's camp, Miami, training checkout and inquiry forms feed the dashboard
+  (patch in `integration/rapobuild/`). Payments made through the site's old checkout are picked up by the
+  webhook too, and `pnpm stripe:backfill` imports past ones.
 - **Email through Brevo:** campaigns, two-way unsubscribe sync, confirmations, reminders and waitlist offers. See [`docs/email-guide.md`](docs/email-guide.md).
 - **Not built:** multi-factor login for admins (recommended next), plus template screenshots from Gmail/Outlook/Apple Mail, which need the live Brevo account.
 
@@ -40,8 +49,10 @@ pnpm admins add you@example.com   # local admin for the dev login
 pnpm demo:data                # optional: fake families through the real checkout
 ```
 
-`data/miami.json` opens registration on Nov 1, 2026 10:00 AM. To try Miami
-checkout locally before then, clear the opening times:
+`data/camps.json` and `data/miami.json` mirror the live site's catalog (same camp and
+session ids as `rapobuild/api/_camps.js`). Miami opens to access-code holders on
+Nov 1, 2026 and to everyone on Dec 1. To try Miami checkout locally before then,
+clear the opening times:
 `psql "$DATABASE_URL" -c "update miami_event set opens_at = null, public_opens_at = null"`.
 
 With `PAYMENTS_MODE=mock`, checkout goes to a local fake Stripe page with **Pay**
@@ -49,7 +60,7 @@ and **Abandon** buttons that send correctly signed webhooks. Locally, the
 dashboard uses a dev login (email only). On Vercel it requires Supabase Auth.
 
 ```bash
-pnpm test            # throwaway database "footyup_test", 90 acceptance tests
+pnpm test            # throwaway database "footyup_test", 104 acceptance tests
 pnpm typecheck       # API + dashboard
 pnpm licenses:check  # every package must be MIT/Apache/BSD/ISC (Build Agreement §4)
 ```
@@ -68,6 +79,7 @@ pnpm waiver add --flow miami --title "Participant waiver" --file waiver.txt
 pnpm settings set notify_email '"alex@example.com"'
 pnpm admins add <email>                 # invite a dashboard admin
 pnpm admins list | remove <email>
+pnpm stripe:backfill --since 2026-09-01 [--apply]   # import payments the site took before the switch
 ```
 
 The real Miami access code is never committed or stored in plain text. Ivy Devs sets it with
@@ -113,15 +125,18 @@ Names only. Values go in Vercel project settings, never in the repo.
 | `EMAIL_FROM`, `EMAIL_FROM_NAME` | Vercel | Sender (must be verified in Brevo) |
 | `CRON_SECRET` | Vercel | Auth for `/api/cron/cleanup` |
 | `RATE_LIMIT_SALT` | Vercel | Salt for hashing IPs in rate-limit keys |
+| `SITE_API_KEY` | Vercel (both projects) | Same random value on the site and here; lets the platform rate-limit per family behind the site's server |
 | `TURNSTILE_SECRET_KEY` | Vercel, optional | CAPTCHA on the training form |
 | `PAYMENTS_MODE` | local only | `mock`; refused in production |
 
 ## Going live (client accounts)
 
 Everything runs in the client's **FootyUP** accounts (Kickoff Form, Section A).
-The recommended setup for Nov 1 is this repo as its own Vercel project (API +
-`/admin`), with the existing site's pages calling it. The live site and its
-current `api/checkout.js` stay untouched until Ivy Devs switches the pages over.
+The setup is this repo as its own Vercel project (API + `/admin`), with the
+existing site forwarding its forms to it. The live site keeps its current
+checkout until `PLATFORM_API_URL` is set on the site's Vercel project, which is
+the switch-over (and unsetting it is the rollback). See
+[`integration/rapobuild/README.md`](integration/rapobuild/README.md).
 
 1. **Supabase** (FootyUP org, Pro): create the project, then run `pnpm db:migrate`
    with `DIRECT_DATABASE_URL`, and `pnpm camps:upsert` and `pnpm miami config`.
@@ -139,11 +154,11 @@ current `api/checkout.js` stay untouched until Ivy Devs switches the pages over.
 5. **Brevo:** create an API key and verified sender, set `BREVO_API_KEY`, `EMAIL_FROM`, and
    `pnpm settings set notify_email '"..."'`. Send the SPF/DKIM/DMARC records to whoever
    controls the footyupp.net DNS.
-6. **Access code:** Ivy Devs runs `pnpm miami code add <code> --label "Host families"`.
-7. Run [`docs/stage-1-checklist.md`](docs/stage-1-checklist.md) on test mode, then swap to live Stripe keys.
+6. **Access code:** Ivy Devs runs `pnpm miami code add <code> --label "Host families"` (or Dashboard →
+   Settings → Access codes). The site's current code can't be copied over, because only a hash is kept.
+7. **Connect the site:** follow [`integration/rapobuild/README.md`](integration/rapobuild/README.md).
+8. Run [`docs/stage-1-checklist.md`](docs/stage-1-checklist.md) on test mode, then swap to live Stripe keys.
 
-To merge into the site repo instead, copy `api/`, `src/`, `admin/`, `supabase/`, `scripts/`,
-`data/` and `tests/`, merge `package.json` and `vercel.json`, and align the `stripe` version (this code targets v23).
 
 ## Layout
 
@@ -156,7 +171,8 @@ src/lib/              Database, Stripe gateway (+ mock), email, admin auth, guar
 supabase/migrations/  Schema, functions, RLS
 supabase/local/       Local-only stand-in for Supabase auth (never applied to Supabase)
 scripts/              Dev server, migrations, admin CLIs, demo data, dashboard build
-data/                 Camp and Miami configuration
+data/                 Camp and Miami configuration (mirrors the live site's catalog)
+integration/rapobuild/  Patch for the live site that forwards its forms here, with the switch-over steps
 docs/                 API contract, Stage 1 checklist, open decisions, handoff
 tests/                Acceptance tests against a real Postgres
 ```

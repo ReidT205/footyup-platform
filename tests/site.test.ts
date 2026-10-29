@@ -76,7 +76,7 @@ describe("site adapter: camp checkout", () => {
     const sessionId = sessionIdFrom(url);
     const mock = deps.payments.sessions.get(sessionId)!;
     expect(mock.amountTotal).toBe(50000);
-    expect(mock.input).toMatchObject({ collectPhone: true, customerEmail: "jamie.rivera@example.test" });
+    expect(mock.input).toMatchObject({ collectPhone: true, allowPromotionCodes: true, customerEmail: "jamie.rivera@example.test" });
     expect(mock.input.cancelUrl).toBe("https://footyupp.test/cancel?camp=summerCamp%2Farlington-catholic");
 
     await pay(url);
@@ -232,6 +232,19 @@ describe("payments from the site's original checkout (before the switch)", () =>
     const regs = await db`select player_name, parent_phone, parent_town, price_cents from public.registrations order by line_no`;
     expect(regs.map((r) => r.price_cents)).toEqual([41500, 41500]);
     expect(regs[0]).toMatchObject({ player_name: "Sam Rivera", parent_phone: "+16175550111", parent_town: "Watertown" });
+  });
+
+  it("spreads a Stripe promotion code over the registrations so revenue by program adds up", async () => {
+    const event = deps.payments.signedEvent("checkout.session.completed", {
+      id: "cs_old_promo", payment_status: "paid", amount_subtotal: 83000, amount_total: 73000, total_details: { amount_discount: 10000 },
+      currency: "usd", payment_intent: "pi_old_promo", customer_details: { email: "promo@example.test" },
+      metadata: { camp_id: "watertown_2027", session_id: "both", player_name: "Pat Promo", player_age: "10", parent_name: "Lee Promo", parent_email: "promo@example.test", town: "Watertown" },
+    });
+    await deliver(deps, event);
+    const regs = await db`select price_cents, discount_cents from public.registrations order by line_no`;
+    expect(regs.map((r) => [r.price_cents, r.discount_cents])).toEqual([[36500, 5000], [36500, 5000]]);
+    const [payment] = await db`select amount_total_cents, discount_cents from public.payments`;
+    expect(payment).toMatchObject({ amount_total_cents: 73000, discount_cents: 10000 });
   });
 
   it("turns old combine metadata into a Miami registration", async () => {
