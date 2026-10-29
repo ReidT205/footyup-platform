@@ -3,7 +3,8 @@ import { startCheckout } from "../lib/checkout.js";
 import type { Deps } from "../lib/deps.js";
 import { enforceRateLimit } from "../lib/guards.js";
 import { ApiError, json, parse, readJson } from "../lib/http.js";
-import type { CheckoutLine } from "../lib/payments.js";
+import { loadPromo, priceLines, stripeLines, totals, type PriceLine } from "../lib/pricing.js";
+import { claimOffer } from "../lib/waitlist.js";
 import { getSettings } from "../lib/settings.js";
 import { currentWaiver, resolveWaiver } from "../lib/waiver.js";
 
@@ -56,9 +57,10 @@ export async function campCheckout(req: Request, deps: Deps): Promise<Response> 
   const waiverRecord = resolveWaiver(waiver, settings.camp_waiver_required, body.waiver, new Date());
 
   let lineNo = 0;
-  const regLines = players.flatMap((player) =>
+  const regLines = players.flatMap((player, playerIndex) =>
     player.sessionIds.map((sessionId) => ({
       lineNo: ++lineNo,
+      playerIndex,
       campId: byId.get(sessionId)!.camp_id,
       sessionId,
       player: { name: player.name, age: player.age, sex: player.sex ?? null, extra: player.extra ?? {} },
@@ -68,10 +70,15 @@ export async function campCheckout(req: Request, deps: Deps): Promise<Response> 
   const counts: Record<string, number> = {};
   for (const line of regLines) counts[line.sessionId] = (counts[line.sessionId] ?? 0) + 1;
 
-  const stripeLines: CheckoutLine[] = sessionIds.map((id) => {
-    const row = byId.get(id)!;
-    return { name: `${row.camp_name} – ${row.name}`, unitAmountCents: row.price_cents, quantity: counts[id]! };
+  const priceInput: PriceLine[] = regLines.map((l) => {
+    const row = byId.get(l.sessionId)!;
+    return { lineNo: l.lineNo, playerIndex: l.playerIndex, unitCents: row.price_cents, campId: row.camp_id, sessionId: l.sessionId, miami: false, label: `${row.camp_name} – ${row.name}` };
   });
+  const promo = await loadPromo(db, body.promoCode, body.parent.email, priceInput);
+  const priced = priceLines(priceInput, settings.sibling_discount, promo);
+  const sums = totals(priced);
+  if (sums.net > 0 && sums.net < 50) throw new ApiError(422, "promo_invalid", "This discount brings the total below Stripe's $0.50 minimum.");
+  const byLine = new Map(priced.map((p) => [p.lineNo, p]));
 
   const result = await startCheckout(deps, {
     flow: "camp",
@@ -81,14 +88,20 @@ export async function campCheckout(req: Request, deps: Deps): Promise<Response> 
       marketingOptIn: body.marketingOptIn ?? false,
       extra: body.extra ?? {},
       waiver: waiverRecord,
-      lines: regLines,
+      pricing: { gross: sums.gross, sibling: sums.sibling, promo: sums.promo, promoCodeId: promo?.id ?? null, promoCode: promo?.code ?? null },
+      waitlistEntryId: null as string | null,
+      lines: regLines.map((l) => ({ ...l, priceCents: byLine.get(l.lineNo)!.finalCents, discountCents: byLine.get(l.lineNo)!.siblingCents + byLine.get(l.lineNo)!.promoCents })),
     },
-    lines: stripeLines,
+    lines: stripeLines(priced, promo),
     customerEmail: body.parent.email,
     holdMinutes: settings.camp_hold_minutes,
     successPath: body.successPath ?? settings.default_success_path,
     cancelPath: body.cancelPath ?? settings.default_cancel_path,
-    reserve: async (tx, intentId, holdExpiresAt) => {
+    reserve: async (tx, intentId, holdExpiresAt, payload) => {
+      if (body.waitlistToken) {
+        payload.waitlistEntryId = await claimOffer(tx, body.waitlistToken, { sessionIds }, players.length);
+        await tx`update public.checkout_intents set payload = ${tx.json(payload as never)} where id = ${intentId}`;
+      }
       await tx`select public.reserve_sessions(${intentId}, ${tx.json(counts)}, ${holdExpiresAt})`;
     },
   });

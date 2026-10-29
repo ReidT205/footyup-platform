@@ -111,3 +111,109 @@ export interface WaitlistEntry {
 
 export const programOf = (r: { camp_kind?: string; camp: string; session: string | null; miami_group: string | null }) =>
   r.miami_group ? `Miami – ${r.miami_group === "boys" ? "Boys" : "Girls"}` : `${r.camp} – ${r.session ?? ""}`;
+
+export interface Contact {
+  id: string
+  email: string
+  name: string | null
+  phone: string | null
+  town: string | null
+  sources: string[]
+  consent: "unknown" | "granted" | "denied"
+  unsubscribed: boolean
+  unsubscribed_at: string | null
+  bounced: boolean
+  created_at: string
+  updated_at: string
+  provider_synced_at: string | null
+  registrations: number
+}
+
+export interface ContactImport {
+  id: string
+  created_at: string
+  created_by_email: string | null
+  filename: string | null
+  consent: "unknown" | "granted"
+  found: number
+  imported: number
+  merged: number
+  duplicates: number
+  rejected_count: number
+  still_unknown: number
+}
+
+export interface ImportReport {
+  dryRun: boolean
+  importId?: string
+  found: number
+  imported: number
+  merged: number
+  duplicates: number
+  rejected: { value: string; reason: string }[]
+  sample: { email: string; name: string | null; town: string | null }[]
+}
+
+export interface Segment {
+  programs: string[]
+  towns: string[]
+  sources: ("registration" | "imported" | "private_training" | "waitlist")[]
+  includeUnknownConsent: boolean
+}
+
+export interface EmailOptions {
+  camps: { id: string; name: string; kind: string; sessions: { id: string; name: string }[] }[]
+  towns: { town: string; contacts: number }[]
+  miami: { name: string } | null
+  mode: "brevo" | "mock" | "none"
+  sender: { email: string; name: string }
+  brand: { mailingAddress: string | null; logoUrl: string | null; replyTo: string | null }
+}
+
+export interface AudienceSummary {
+  matched: number
+  sendable: number
+  excluded: { unsubscribed: number; bounced: number; denied: number; unknown: number }
+  sample: { email: string; name: string | null; town: string | null }[]
+}
+
+export interface CampaignLog {
+  id: string
+  created_at: string
+  status: "sending" | "sent" | "failed" | "test"
+  sent_by_email: string | null
+  segment: Segment | null
+  subject: string
+  body: string | null
+  recipient_count: number
+  excluded: AudienceSummary["excluded"] | null
+  provider_campaign_id: string | null
+  error: string | null
+}
+
+export interface EmailSetup {
+  mode: "brevo" | "mock" | "none"
+  sender: { email: string; name: string }
+  domain: string
+  webhookUrl: string
+  webhookConfigured: boolean
+  provider: {
+    connected: boolean
+    account?: { email: string | null; company: string | null; plan: string | null; credits: number | null }
+    senderVerified?: boolean | null
+    domain?: { name: string; exists: boolean; authenticated: boolean; verified: boolean; records: { label: string; type: string; host: string; value: string; status: string }[] } | null
+    error?: string
+  }
+  dns: { name: string; host: string; found: string | null; ok: boolean; hint: string }[]
+  contacts: { total: number; consented: number; unknown: number; unsubscribed: number; bounced: number }
+  settings: {
+    notify_email: string | null
+    reply_to_email: string | null
+    mailing_address: string | null
+    email_logo_url: string | null
+    auto_confirmations: boolean
+    auto_reminders: boolean
+    reminder_note: string | null
+    miami_confirmation_note: string | null
+  }
+}

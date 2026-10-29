@@ -18,7 +18,8 @@ export interface StartCheckoutOptions {
   holdMinutes: number;
   successPath: string;
   cancelPath: string;
-  reserve: (tx: Db, intentId: string, holdExpiresAt: Date) => Promise<void>;
+  /** Runs in the same transaction as the intent insert. May update `payload` (e.g. the claimed waitlist entry). */
+  reserve: (tx: Db, intentId: string, holdExpiresAt: Date, payload: any) => Promise<void>;
 }
 
 function mapCapacityError(err: unknown): never {
@@ -53,7 +54,7 @@ export async function startCheckout(deps: Deps, opts: StartCheckoutOptions): Pro
         insert into public.checkout_intents (flow, payload, via_access_code, amount_cents, expires_at)
         values (${opts.flow}, ${tx.json(opts.payload as never)}, ${opts.viaAccessCode}, ${amountCents}, ${holdExpiresAt})
         returning id`;
-      await opts.reserve(tx, intent!.id, holdExpiresAt);
+      await opts.reserve(tx, intent!.id, holdExpiresAt, opts.payload);
       return intent!.id;
     });
   } catch (err) {

@@ -43,10 +43,16 @@ export const WaiverAcceptance = z.object({
   acceptedName: text(120),
 });
 
+const PromoCode = z.string().trim().min(1).max(40);
+/** From the ?waitlist=<token> link in a waitlist offer email. */
+const WaitlistToken = z.string().trim().min(10).max(100);
+
 const CheckoutCommon = {
   parent: Parent,
   waiver: WaiverAcceptance.optional(),
   marketingOptIn: z.boolean().optional(),
+  promoCode: PromoCode.optional(),
+  waitlistToken: WaitlistToken.optional(),
   successPath: SitePath.optional(),
   cancelPath: SitePath.optional(),
 };
@@ -121,6 +127,8 @@ export const MiamiCheckoutRequest = z.object({
   players: z.array(MiamiPlayer).min(1).max(4),
   waiver: WaiverAcceptance.optional(),
   marketingOptIn: z.boolean().optional(),
+  promoCode: PromoCode.optional(),
+  waitlistToken: WaitlistToken.optional(),
   successPath: SitePath.optional(),
   cancelPath: SitePath.optional(),
 });
@@ -193,6 +201,8 @@ export type ErrorCode =
   | "group_closed"
   | "pricing_not_configured"
   | "waiver_required"
+  | "promo_invalid"
+  | "waitlist_offer_invalid"
   | "captcha_failed"
   | "payment_provider_error"
   | "unauthorized"
@@ -303,6 +313,16 @@ export interface MiamiStatusResponse {
 export interface VerifyCodeResponse {
   valid: true;
   groups: MiamiGroupStatus[];
+}
+
+export interface WaitlistOfferResponse {
+  valid: boolean;
+  program?: string;
+  sessionId?: string | null;
+  miamiGroup?: "boys" | "girls" | null;
+  spots?: number;
+  expiresAt?: string;
+  parent?: { name: string; email: string; phone: string; town: string };
 }
 
 export interface OkResponse {

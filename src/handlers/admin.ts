@@ -3,6 +3,8 @@ import { asAdmin, requireAdmin, signDevToken } from "../lib/admin-auth.js";
 import type { Deps } from "../lib/deps.js";
 import { enforceRateLimit } from "../lib/guards.js";
 import { ApiError, json, parse, readJson } from "../lib/http.js";
+import { EMAIL_GET, EMAIL_POST } from "./admin-email.js";
+import { MANAGE_GET, MANAGE_POST } from "./admin-manage.js";
 
 /** GET /api/admin/config: tells the dashboard how to sign in. Public. */
 async function config(_req: Request, deps: Deps) {
@@ -89,7 +91,8 @@ async function registrations(req: Request, deps: Deps) {
              r.ship_line1, r.ship_line2, r.ship_city, r.ship_state, r.ship_postal_code, r.extra,
              r.waiver_status, w.version as waiver_version, r.waiver_accepted_at, r.waiver_accepted_name,
              p.status as payment_status, p.amount_total_cents as checkout_total_cents, p.discount_cents, p.refunded_cents,
-             p.stripe_payment_intent_id, p.stripe_checkout_session_id
+             p.stripe_payment_intent_id, p.stripe_checkout_session_id, r.price_cents, r.discount_cents, r.cancelled_at, r.cancel_reason,
+             p.promo_code
         from public.registrations r
         join public.camps c on c.id = r.camp_id
         join public.payments p on p.id = r.payment_id
@@ -118,8 +121,8 @@ async function waitlist(req: Request, deps: Deps) {
     deps,
     user,
     (tx) => tx`
-      select w.id, w.created_at, c.name as camp, s.name as session, w.miami_group, w.parent_name, w.email, w.phone, w.town,
-             w.spots, w.status
+      select w.id, w.created_at, c.name as camp, s.name as session, w.session_id, w.miami_group, w.parent_name, w.email, w.phone, w.town,
+             w.spots, w.status, w.notified_at, w.offer_expires_at, w.converted_at
         from public.waitlist_entries w
         join public.camps c on c.id = w.camp_id
         left join public.sessions s on s.id = w.session_id
@@ -128,8 +131,8 @@ async function waitlist(req: Request, deps: Deps) {
   return json({ waitlist: rows });
 }
 
-const GET_VIEWS: Record<string, (req: Request, deps: Deps) => Promise<Response>> = { config, overview, registrations, requests, waitlist };
-const POST_VIEWS: Record<string, (req: Request, deps: Deps) => Promise<Response>> = { "dev-login": devLogin };
+const GET_VIEWS: Record<string, (req: Request, deps: Deps) => Promise<Response>> = { config, overview, registrations, requests, waitlist, ...EMAIL_GET, ...MANAGE_GET };
+const POST_VIEWS: Record<string, (req: Request, deps: Deps) => Promise<Response>> = { "dev-login": devLogin, ...EMAIL_POST, ...MANAGE_POST };
 
 /** /api/admin/<view> */
 export async function admin(req: Request, deps: Deps): Promise<Response> {

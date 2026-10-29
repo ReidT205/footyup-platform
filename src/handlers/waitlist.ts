@@ -1,4 +1,4 @@
-import { WaitlistRequest, type OkResponse } from "../contract.js";
+import { WaitlistRequest, type OkResponse, type WaitlistOfferResponse } from "../contract.js";
 import type { Deps } from "../lib/deps.js";
 import { enforceRateLimit } from "../lib/guards.js";
 import { ApiError, json, parse, readJson } from "../lib/http.js";
@@ -30,4 +30,29 @@ export async function joinWaitlist(req: Request, deps: Deps): Promise<Response> 
   });
 
   return json({ ok: true } satisfies OkResponse, 201);
+}
+
+/** GET /api/waitlist?token=...: what a waitlist offer link holds, so the page can prefill checkout. */
+export async function waitlistOffer(req: Request, deps: Deps): Promise<Response> {
+  const token = new URL(req.url).searchParams.get("token") ?? "";
+  if (token.length < 10) return json({ valid: false } satisfies WaitlistOfferResponse);
+  const [row] = await deps.db<{ status: string; offer_expires_at: Date | null; session_id: string | null; miami_group: "boys" | "girls" | null; spots: number; parent_name: string; email: string; phone: string; town: string; program: string }[]>`
+    select w.status, w.offer_expires_at, w.session_id, w.miami_group, w.spots, w.parent_name, w.email, w.phone, w.town,
+           case when w.miami_group is not null then c.name || ' – ' || initcap(w.miami_group) else c.name || ' – ' || coalesce(s.name, '') end as program
+      from public.waitlist_entries w
+      join public.camps c on c.id = w.camp_id
+      left join public.sessions s on s.id = w.session_id
+     where w.offer_token = ${token}`;
+  if (!row || row.status !== "notified" || !row.offer_expires_at || row.offer_expires_at.getTime() <= Date.now()) {
+    return json({ valid: false } satisfies WaitlistOfferResponse);
+  }
+  return json({
+    valid: true,
+    program: row.program,
+    sessionId: row.session_id,
+    miamiGroup: row.miami_group,
+    spots: row.spots,
+    expiresAt: row.offer_expires_at.toISOString(),
+    parent: { name: row.parent_name, email: row.email, phone: row.phone, town: row.town },
+  } satisfies WaitlistOfferResponse);
 }

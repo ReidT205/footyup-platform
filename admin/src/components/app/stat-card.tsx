@@ -60,7 +60,7 @@ export function StatCard({
           <p className="text-muted-foreground text-sm font-medium">{label}</p>
           <p className="text-[1.75rem] leading-none font-semibold tracking-tight">
             {prefix}
-            <NumberTicker value={value} className="tracking-tight text-foreground" />
+            <NumberTicker value={value} stiffness={320} damping={42} className="tracking-tight text-foreground" />
           </p>
         </div>
         <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg", tile)}>

@@ -10,7 +10,8 @@ import type { Db } from "../lib/db.js";
 import type { Deps } from "../lib/deps.js";
 import { enforceRateLimit, hashAccessCode } from "../lib/guards.js";
 import { ApiError, json, parse, readJson } from "../lib/http.js";
-import type { CheckoutLine } from "../lib/payments.js";
+import { loadPromo, priceLines, stripeLines, totals, type PriceLine } from "../lib/pricing.js";
+import { claimOffer } from "../lib/waitlist.js";
 import { getSettings } from "../lib/settings.js";
 import { currentWaiver, resolveWaiver } from "../lib/waiver.js";
 
@@ -213,15 +214,20 @@ export async function miamiCheckout(req: Request, deps: Deps): Promise<Response>
   const counts: Partial<Record<Group, number>> = {};
   for (const p of players) counts[p.group] = (counts[p.group] ?? 0) + 1;
 
-  const stripeLines: CheckoutLine[] = [];
-  for (const group of Object.keys(counts) as Group[]) {
-    const row = availability.get(group);
-    const price = row ? priceFor(row, viaCode) : null;
+  const priceInput: PriceLine[] = []
+  for (const [i, p] of players.entries()) {
+    const row = availability.get(p.group)
+    const price = row ? priceFor(row, viaCode) : null
     if (!row || price === null) {
-      throw new ApiError(503, "pricing_not_configured", "Miami pricing hasn't been published yet. Please check back soon.", { group });
+      throw new ApiError(503, "pricing_not_configured", "Miami pricing hasn't been published yet. Please check back soon.", { group: p.group })
     }
-    stripeLines.push({ name: `${event.name} – ${row.label}`, unitAmountCents: price, quantity: counts[group]! });
+    priceInput.push({ lineNo: i + 1, playerIndex: i, unitCents: price, campId: event.camp_id, sessionId: null, miami: true, label: `${event.name} – ${row.label}` })
   }
+  const settingsForPricing = await getSettings(db)
+  const promo = await loadPromo(db, body.promoCode, body.parent.email, priceInput)
+  const priced = priceLines(priceInput, settingsForPricing.sibling_discount, promo)
+  const sums = totals(priced)
+  if (sums.net > 0 && sums.net < 50) throw new ApiError(422, "promo_invalid", "This discount brings the total below Stripe's $0.50 minimum.")
 
   const waiver = await currentWaiver(db, "miami");
   const waiverRecord = resolveWaiver(waiver, event.waiver_required, body.waiver, new Date());
@@ -244,8 +250,12 @@ export async function miamiCheckout(req: Request, deps: Deps): Promise<Response>
       marketingOptIn: body.marketingOptIn ?? false,
       extra: {},
       waiver: waiverRecord,
+      pricing: { gross: sums.gross, sibling: sums.sibling, promo: sums.promo, promoCodeId: promo?.id ?? null, promoCode: promo?.code ?? null },
+      waitlistEntryId: null as string | null,
       lines: players.map((p, i) => ({
         lineNo: i + 1,
+        priceCents: priced[i]!.finalCents,
+        discountCents: priced[i]!.siblingCents + priced[i]!.promoCents,
         campId: event.camp_id,
         miamiGroup: p.group,
         player: {
@@ -266,12 +276,16 @@ export async function miamiCheckout(req: Request, deps: Deps): Promise<Response>
         },
       })),
     },
-    lines: stripeLines,
+    lines: stripeLines(priced, promo),
     customerEmail: parent.email,
     holdMinutes: event.hold_minutes,
     successPath: body.successPath ?? settings.default_success_path,
     cancelPath: body.cancelPath ?? settings.default_cancel_path,
-    reserve: async (tx, intentId, holdExpiresAt) => {
+    reserve: async (tx, intentId, holdExpiresAt, payload) => {
+      if (body.waitlistToken) {
+        payload.waitlistEntryId = await claimOffer(tx, body.waitlistToken, { miamiGroups: Object.keys(counts) }, players.length)
+        await tx`update public.checkout_intents set payload = ${tx.json(payload as never)} where id = ${intentId}`
+      }
       await tx`select public.reserve_miami(${intentId}, ${tx.json(counts)}, ${viaCode}, ${holdExpiresAt})`;
     },
   });

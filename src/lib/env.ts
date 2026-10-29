@@ -16,6 +16,13 @@ export interface Env {
   supabaseAnonKey: string | undefined;
   /** Without Supabase configured, local development uses a signed dev login instead. */
   adminAuthMode: "supabase" | "dev" | "unconfigured";
+  /** Public origin of this API, used for unsubscribe links in emails. */
+  apiUrl: string;
+  /** Shared secret in the Brevo webhook URL (?token=...). */
+  brevoWebhookSecret: string | undefined;
+  /** Domain authenticated in Brevo for sending (SPF/DKIM/DMARC). */
+  emailDomain: string;
+  onVercel: boolean;
 }
 
 const MOCK_WEBHOOK_SECRET = "whsec_local_mock_only";
@@ -51,18 +58,27 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   // The dev login is for local machines only; on Vercel admin login needs Supabase.
   const adminAuthMode: Env["adminAuthMode"] = supabaseUrl && supabaseAnonKey ? "supabase" : source.VERCEL_ENV ? "unconfigured" : "dev";
 
+  const siteUrl = (source.PUBLIC_SITE_URL || "http://localhost:4319").replace(/\/+$/, "");
+  const adminOrigin = source.PUBLIC_ADMIN_URL ? new URL(source.PUBLIC_ADMIN_URL).origin : undefined;
+  const apiUrl = (source.PUBLIC_API_URL || adminOrigin || (source.VERCEL_PROJECT_PRODUCTION_URL ? `https://${source.VERCEL_PROJECT_PRODUCTION_URL}` : siteUrl)).replace(/\/+$/, "");
+  const emailFrom = source.EMAIL_FROM || "no-reply@footyupp.net";
+
   return {
+    apiUrl,
+    brevoWebhookSecret: source.BREVO_WEBHOOK_SECRET || undefined,
+    emailDomain: source.EMAIL_DOMAIN || emailFrom.split("@")[1] || "footyupp.net",
+    onVercel: Boolean(source.VERCEL_ENV),
     supabaseUrl,
     supabaseAnonKey,
     adminAuthMode,
     databaseUrl: required(source, "DATABASE_URL"),
-    siteUrl: (source.PUBLIC_SITE_URL || "http://localhost:4319").replace(/\/+$/, ""),
+    siteUrl,
     isProduction,
     paymentsMode,
     stripeSecretKey,
     stripeWebhookSecret,
     brevoApiKey: source.BREVO_API_KEY || undefined,
-    emailFrom: source.EMAIL_FROM || "no-reply@footyupp.net",
+    emailFrom,
     emailFromName: source.EMAIL_FROM_NAME || "Footy Up",
     turnstileSecretKey: source.TURNSTILE_SECRET_KEY || undefined,
     cronSecret: source.CRON_SECRET || undefined,

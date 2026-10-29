@@ -1,5 +1,7 @@
 import type { Deps } from "../lib/deps.js";
 import { ApiError, json } from "../lib/http.js";
+import { sendConfirmations, sendReminders } from "../email/automatic.js";
+import { processWaitlists } from "../lib/waitlist.js";
 
 /**
  * GET /api/cron/cleanup (Vercel cron). Capacity math already ignores expired
@@ -7,8 +9,8 @@ import { ApiError, json } from "../lib/http.js";
  * checkouts that were never paid. Pending checkouts are kept for 4 days because
  * Stripe retries a failed webhook for up to 3 days.
  */
-export async function cleanup(req: Request, deps: Deps): Promise<Response> {
-  const { db, env } = deps;
+function authorize(req: Request, deps: Deps) {
+  const { env } = deps;
   if (env.cronSecret) {
     if (req.headers.get("authorization") !== `Bearer ${env.cronSecret}`) {
       throw new ApiError(401, "unauthorized", "Unauthorized");
@@ -16,6 +18,25 @@ export async function cleanup(req: Request, deps: Deps): Promise<Response> {
   } else if (env.isProduction) {
     throw new ApiError(401, "unauthorized", "CRON_SECRET is not configured");
   }
+}
+
+/** GET /api/cron/emails: retries unsent confirmations and sends today's reminders (Brief D8). */
+export async function emailsCron(req: Request, deps: Deps): Promise<Response> {
+  authorize(req, deps);
+  const confirmations = await sendConfirmations(deps);
+  const reminders = await sendReminders(deps);
+  return json({ confirmations, reminders });
+}
+
+/** GET /api/cron/waitlist (hourly): lapses expired offers and offers freed spots (Brief D9). */
+export async function waitlistCron(req: Request, deps: Deps): Promise<Response> {
+  authorize(req, deps);
+  return json(await processWaitlists(deps));
+}
+
+export async function cleanup(req: Request, deps: Deps): Promise<Response> {
+  const { db } = deps;
+  authorize(req, deps);
 
   const result = await db.begin(async (tx) => {
     const holds = await tx`

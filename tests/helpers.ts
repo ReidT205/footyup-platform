@@ -7,6 +7,8 @@ import { MemoryMailer } from "../src/lib/email.js";
 import { loadEnv } from "../src/lib/env.js";
 import { endpoint } from "../src/lib/http.js";
 import { MockGateway } from "../src/lib/payments.js";
+import { MockEmailProvider } from "../src/email/provider.js";
+import { unsubscribeUrl } from "../src/email/links.js";
 import { hashAccessCode } from "../src/lib/guards.js";
 import { stripeWebhook } from "../src/handlers/stripe-webhook.js";
 import { testUrl } from "./db-url.js";
@@ -14,6 +16,7 @@ import { testUrl } from "./db-url.js";
 export interface TestDeps extends Deps {
   payments: MockGateway;
   mailer: MemoryMailer;
+  email: MockEmailProvider;
 }
 
 export function makeDeps(): TestDeps {
@@ -23,6 +26,7 @@ export function makeDeps(): TestDeps {
     env,
     payments: new MockGateway(env.siteUrl, env.stripeWebhookSecret),
     mailer: new MemoryMailer(),
+    email: new MockEmailProvider((address) => unsubscribeUrl(env, address)),
   };
 }
 

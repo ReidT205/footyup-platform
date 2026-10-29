@@ -15,21 +15,25 @@ export function createApi(config: AuthConfig, getSession: () => Session | null, 
     return next;
   }
 
-  return async function get<T>(view: string): Promise<T> {
+  return async function call<T>(view: string, body?: unknown): Promise<T> {
+    const init = (token: string): RequestInit =>
+      body === undefined
+        ? { headers: { authorization: `Bearer ${token}` } }
+        : { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(body) };
     let session = await ensureFresh();
-    let res = await fetch(`/api/admin/${view}`, { headers: { authorization: `Bearer ${session.accessToken}` } });
+    let res = await fetch(`/api/admin/${view}`, init(session.accessToken));
     if (res.status === 401) {
       const next = await refresh(config, session);
       if (!next) throw new SessionExpired();
       saveSession(next);
       setSession(next);
       session = next;
-      res = await fetch(`/api/admin/${view}`, { headers: { authorization: `Bearer ${session.accessToken}` } });
+      res = await fetch(`/api/admin/${view}`, init(session.accessToken));
     }
-    const body = await res.json().catch(() => ({}));
+    const result = await res.json().catch(() => ({}));
     if (res.status === 401) throw new SessionExpired();
-    if (!res.ok) throw new Error(body.message ?? "Couldn't load this page. Please try again.");
-    return body as T;
+    if (!res.ok) throw new Error(result.message ?? "Something went wrong. Please try again.");
+    return result as T;
   };
 }
 

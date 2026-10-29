@@ -1,6 +1,8 @@
 import type { Db, Sql } from "../lib/db.js";
 import type { Deps } from "../lib/deps.js";
 import { json, logError } from "../lib/http.js";
+import { sendConfirmations } from "../email/automatic.js";
+import { processWaitlistsQuietly } from "../lib/waitlist.js";
 import { WebhookSignatureError, type WebhookEvent } from "../lib/payments.js";
 import type { WaiverRecord } from "../lib/waiver.js";
 
@@ -19,7 +21,11 @@ interface IntentPayload {
   marketingOptIn: boolean;
   extra: Record<string, unknown>;
   waiver: WaiverRecord;
+  pricing?: { gross: number; sibling: number; promo: number; promoCodeId: string | null; promoCode: string | null };
+  waitlistEntryId?: string | null;
   lines: Array<{
+    priceCents?: number;
+    discountCents?: number;
     lineNo: number;
     campId: string;
     sessionId?: string;
@@ -108,6 +114,16 @@ async function completeCheckout(tx: Db, session: Record<string, any>): Promise<W
     logError("webhook.payload_missing", { name: "PayloadMissing", code: intent.id });
     return "payload_missing";
   }
+  if (payload.pricing) {
+    const p = payload.pricing;
+    await tx`
+      update public.payments set
+        promo_code_id = ${p.promoCodeId}, promo_code = ${p.promoCode},
+        sibling_discount_cents = ${p.sibling}, promo_discount_cents = ${p.promo},
+        discount_cents = ${p.sibling + p.promo + Number(session.total_details?.amount_discount ?? 0)},
+        amount_subtotal_cents = ${p.gross}
+       where id = ${paymentId}`;
+  }
 
   const { parent, waiver } = payload;
   for (const line of payload.lines) {
@@ -120,7 +136,7 @@ async function completeCheckout(tx: Db, session: Record<string, any>): Promise<W
         player_name, player_first_name, player_last_name, player_age, player_sex, player_email,
         player_height_in, player_weight_lb, player_position, player_club, shirt_size, short_size,
         ship_line1, ship_line2, ship_city, ship_state, ship_postal_code, extra,
-        waiver_status, waiver_id, waiver_accepted_at, waiver_accepted_name
+        waiver_status, waiver_id, waiver_accepted_at, waiver_accepted_name, price_cents, discount_cents
       ) values (
         ${intent.id}, ${line.lineNo}, ${paymentId}, ${line.campId}, ${line.sessionId ?? null}, ${line.miamiGroup ?? null},
         ${intent.via_access_code},
@@ -131,12 +147,16 @@ async function completeCheckout(tx: Db, session: Record<string, any>): Promise<W
         ${p.shirtSize ?? null}, ${p.shortSize ?? null},
         ${addr?.line1 ?? null}, ${addr?.line2 ?? null}, ${addr?.city ?? null}, ${addr?.state ?? null}, ${addr?.postalCode ?? null},
         ${tx.json({ ...payload.extra, ...p.extra } as never)},
-        ${waiver.status}, ${waiver.waiverId}, ${waiver.acceptedAt}, ${waiver.acceptedName}
+        ${waiver.status}, ${waiver.waiverId}, ${waiver.acceptedAt}, ${waiver.acceptedName},
+        ${line.priceCents ?? null}, ${line.discountCents ?? 0}
       )
       on conflict (intent_id, line_no) do nothing`;
   }
 
   await tx`update public.holds set status = 'converted' where intent_id = ${intent.id} and status = 'active'`;
+  if (payload.waitlistEntryId) {
+    await tx`update public.waitlist_entries set status = 'converted', converted_at = now(), offer_token = null where id = ${payload.waitlistEntryId}`;
+  }
   await tx`update public.checkout_intents set status = 'completed', completed_at = now(), payload = null where id = ${intent.id}`;
   await tx`select public.upsert_contact(${parent.email}, ${parent.name}, ${parent.phone}, ${parent.town},
                                         'registration', ${payload.marketingOptIn ? "granted" : null})`;
@@ -203,5 +223,16 @@ export async function stripeWebhook(req: Request, deps: Deps): Promise<Response>
     throw err;
   }
   const result = await processStripeEvent(deps.db, event);
+  if (result === "registered") {
+    try {
+      const [payment] = await deps.db<{ id: string }[]>`
+        select id from public.payments where stripe_checkout_session_id = ${String(event.data.object.id)}`;
+      if (payment) await sendConfirmations(deps, { paymentId: payment.id });
+    } catch (err) {
+      // The registration is saved; the daily email job retries unsent confirmations.
+      logError("webhook.confirmation", err);
+    }
+  }
+  if (result === "released" || result === "refund_recorded") await processWaitlistsQuietly(deps);
   return json({ received: true, result });
 }
