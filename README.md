@@ -145,7 +145,7 @@ To merge into the site repo instead, copy `api/`, `src/`, `admin/`, `supabase/`,
 
 ```
 api/                  Vercel functions (Web Request/Response); api/admin/[view].ts serves the dashboard API
-admin/                Dashboard (React, bundled by esbuild into public/admin)
+admin/                Dashboard (React + Tailwind v4, ReUI/shadcn + Magic UI components; built into public/admin)
 src/contract.ts       Request/response schemas shared with the front end
 src/handlers/         Endpoint logic
 src/lib/              Database, Stripe gateway (+ mock), email, admin auth, guards, settings

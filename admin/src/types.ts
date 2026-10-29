@@ -30,6 +30,8 @@ export interface Overview {
   miami: MiamiGroupRow[];
   byCamp: { camp: string; kind: string; session: string; registrations: number }[];
   totals: { registrations: number; net_cents: number; new_requests: number; waiting: number; legacy_payments: number };
+  daily: { day: string; registrations: number }[];
+  recent: { id: string; created_at: string; player_name: string; parent_town: string; camp: string; session: string | null; miami_group: string | null }[];
 }
 
 export interface Registration {

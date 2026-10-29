@@ -1,13 +1,41 @@
-import { useCallback, useMemo, useState } from "react";
-import type { Api } from "../api";
-import { downloadCsv, stamp, type Column } from "../csv";
-import { dateTime, height, label, money } from "../format";
-import { programOf, type Registration } from "../types";
-import { Badge, Button, Card, Details, Drawer, EmptyState, ErrorState, Pager, Spinner } from "../ui";
-import { useLoad } from "../useLoad";
+import { useCallback, useMemo, useState, type ReactNode } from "react"
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ChevronsUpDownIcon,
+  ClipboardListIcon,
+  CreditCardIcon,
+  DownloadIcon,
+  FileSignatureIcon,
+  MailIcon,
+  PackageIcon,
+  PhoneIcon,
+  SearchIcon,
+  ShieldAlertIcon,
+  UserIcon,
+  UsersIcon,
+  XIcon,
+} from "lucide-react"
 
-const PAGE = 50;
-type SortKey = "created_at" | "player_name" | "program" | "parent_town";
+import type { Api } from "../api"
+import { downloadCsv, stamp, type Column } from "../csv"
+import { dateTime, height, label, money } from "../format"
+import { programOf, type Registration } from "../types"
+import { useLoad } from "../useLoad"
+import { EmptyState, ErrorState, NameAvatar, PageHeader, TableSkeleton } from "@/components/app/states"
+import { ProgramDot, StatusBadge } from "@/components/app/status-badge"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { NativeSelect } from "@/components/ui/native-select"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+
+const PAGE = 25
+type SortKey = "created_at" | "player_name" | "program" | "parent_town"
 
 const CSV_COLUMNS: Column<Registration>[] = [
   { header: "Registered at", value: (r) => r.created_at },
@@ -46,249 +74,339 @@ const CSV_COLUMNS: Column<Registration>[] = [
   { header: "Refunded (USD)", value: (r) => (r.refunded_cents / 100).toFixed(2) },
   { header: "Stripe payment", value: (r) => r.stripe_payment_intent_id },
   { header: "Registration ID", value: (r) => r.id },
-];
+]
 
-function RegistrationDrawer({ r, onClose }: { r: Registration; onClose: () => void }) {
-  const miami = Boolean(r.miami_group);
+function Section({ icon: Icon, title, children, tone }: { icon: typeof UserIcon; title: string; children: ReactNode; tone?: "sensitive" }) {
   return (
-    <Drawer title={r.player_name} onClose={onClose}>
-      <section>
-        <h3>Registration</h3>
-        <Details
-          rows={[
-            ["Program", programOf(r)],
-            ["Registered", dateTime(r.created_at)],
-            ["Payment", <Badge key="p" value={r.payment_status} />],
-            ["Waiver", <Badge key="w" value={r.waiver_status} />],
-            ...(miami ? ([["Host-school code", r.via_access_code ? "Used" : "Not used"]] as [string, string][]) : []),
-          ]}
-        />
-      </section>
-      <section>
-        <h3>Player</h3>
-        <Details
-          rows={[
-            ["Name", r.player_name],
-            ["Age", r.player_age],
-            ...(miami
-              ? ([
-                  ["Email", r.player_email],
-                  ["Primary position", r.player_position],
-                  ["Current club / team", r.player_club],
-                  ["Shirt / short size", `${r.shirt_size ?? "—"} / ${r.short_size ?? "—"}`],
-                ] as [string, string | null][])
-              : ([["Sex", label(r.player_sex)]] as [string, string][])),
-          ]}
-        />
-      </section>
-      {miami && (
-        <section className="sensitive">
-          <h3>Sensitive · shipping and measurements</h3>
-          <Details
-            rows={[
-              ["Height", height(r.player_height_in)],
-              ["Weight", r.player_weight_lb ? `${r.player_weight_lb} lb` : "—"],
-              [
-                "Ship to",
-                r.ship_line1 ? (
-                  <span key="a">
-                    {r.ship_line1}
-                    {r.ship_line2 ? `, ${r.ship_line2}` : ""}
-                    <br />
-                    {r.ship_city}, {r.ship_state} {r.ship_postal_code}
-                  </span>
-                ) : null,
-              ],
-            ]}
-          />
-        </section>
-      )}
-      <section>
-        <h3>Parent / guardian</h3>
-        <Details
-          rows={[
-            ["Name", r.parent_name],
-            ["Town", r.parent_town],
-            ["Email", <a key="e" href={`mailto:${r.parent_email}`}>{r.parent_email}</a>],
-            ["Phone", <a key="t" href={`tel:${r.parent_phone}`}>{r.parent_phone}</a>],
-            ...(r.emergency_phone ? ([["Emergency phone", r.emergency_phone]] as [string, string][]) : []),
-          ]}
-        />
-      </section>
-      {Object.keys(r.extra ?? {}).length > 0 && (
-        <section>
-          <h3>Other form fields</h3>
-          <Details rows={Object.entries(r.extra).map(([k, v]) => [k, String(v)])} />
-        </section>
-      )}
-      <section>
-        <h3>Payment</h3>
-        <Details
-          rows={[
-            ["Checkout total", money(r.checkout_total_cents)],
-            ["Refunded", money(r.refunded_cents)],
-            ["Stripe payment", r.stripe_payment_intent_id],
-            ["Waiver accepted", r.waiver_accepted_at ? `${dateTime(r.waiver_accepted_at)} by ${r.waiver_accepted_name} (v${r.waiver_version})` : "Not collected"],
-          ]}
-        />
-        <p className="sub" style={{ marginTop: 10 }}>
-          The checkout total covers every player and session paid for together.
-        </p>
-      </section>
-    </Drawer>
-  );
+    <section className={tone === "sensitive" ? "rounded-xl border border-amber-200 bg-amber-50/60 p-4" : ""}>
+      <h3 className={`mb-3 flex items-center gap-2 text-xs font-semibold tracking-wide uppercase ${tone === "sensitive" ? "text-amber-800" : "text-muted-foreground"}`}>
+        <Icon className="size-3.5" />
+        {title}
+      </h3>
+      {children}
+    </section>
+  )
 }
 
-export function Registrations({ api, onExpired }: { api: Api; onExpired: () => void }) {
-  const load = useCallback(() => api<{ registrations: Registration[] }>("registrations"), [api]);
-  const { data, error, loading, reload } = useLoad(load, onExpired);
+function Fields({ rows }: { rows: [string, ReactNode][] }) {
+  return (
+    <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+      {rows.map(([k, v]) => (
+        <div key={k} className="min-w-0">
+          <dt className="text-muted-foreground text-xs">{k}</dt>
+          <dd className="mt-0.5 text-sm break-words">{v === null || v === undefined || v === "" ? <span className="text-muted-foreground">—</span> : v}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
 
-  const [search, setSearch] = useState("");
-  const [program, setProgram] = useState("");
-  const [town, setTown] = useState("");
-  const [payment, setPayment] = useState("");
-  const [waiver, setWaiver] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "created_at", dir: -1 });
-  const [page, setPage] = useState(0);
-  const [open, setOpen] = useState<Registration | null>(null);
+function RegistrationSheet({ r, onClose }: { r: Registration | null; onClose: () => void }) {
+  const miami = Boolean(r?.miami_group)
+  return (
+    <Sheet open={Boolean(r)} onOpenChange={(open) => !open && onClose()}>
+      <SheetContent className="w-full gap-0 overflow-y-auto p-0 sm:max-w-lg">
+        {r && (
+          <>
+            <SheetHeader className="border-b p-6">
+              <div className="flex items-center gap-3">
+                <NameAvatar name={r.player_name} className="size-11 text-sm" />
+                <div className="min-w-0">
+                  <SheetTitle className="truncate text-lg">{r.player_name}</SheetTitle>
+                  <SheetDescription className="flex items-center gap-1.5">
+                    <ProgramDot program={programOf(r)} />
+                    {programOf(r)}
+                  </SheetDescription>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <StatusBadge value={r.payment_status} />
+                <StatusBadge value={r.waiver_status} />
+                {miami && r.via_access_code && <Badge variant="info-light">Host-school code</Badge>}
+              </div>
+            </SheetHeader>
+            <div className="space-y-7 p-6">
+              <Section icon={UserIcon} title="Player">
+                <Fields
+                  rows={[
+                    ["Name", r.player_name],
+                    ["Age", r.player_age],
+                    ...(miami
+                      ? ([
+                          ["Email", r.player_email],
+                          ["Primary position", r.player_position],
+                          ["Current club / team", r.player_club],
+                          ["Shirt / short size", `${r.shirt_size ?? "—"} / ${r.short_size ?? "—"}`],
+                        ] as [string, ReactNode][])
+                      : ([["Sex", label(r.player_sex)]] as [string, ReactNode][])),
+                  ]}
+                />
+              </Section>
+              {miami && (
+                <Section icon={ShieldAlertIcon} title="Sensitive · shipping and measurements" tone="sensitive">
+                  <Fields
+                    rows={[
+                      ["Height", height(r.player_height_in)],
+                      ["Weight", r.player_weight_lb ? `${r.player_weight_lb} lb` : null],
+                      [
+                        "Ship package to",
+                        r.ship_line1 ? (
+                          <span className="flex gap-2">
+                            <PackageIcon className="text-amber-700 mt-0.5 size-4 shrink-0" />
+                            <span>
+                              {r.ship_line1}
+                              {r.ship_line2 ? `, ${r.ship_line2}` : ""}
+                              <br />
+                              {r.ship_city}, {r.ship_state} {r.ship_postal_code}
+                            </span>
+                          </span>
+                        ) : null,
+                      ],
+                    ]}
+                  />
+                </Section>
+              )}
+              <Section icon={UsersIcon} title="Parent / guardian">
+                <Fields
+                  rows={[
+                    ["Name", r.parent_name],
+                    ["Town", r.parent_town],
+                    ["Email", r.parent_email],
+                    ["Phone", r.parent_phone],
+                    ...(r.emergency_phone ? ([["Emergency phone", r.emergency_phone]] as [string, ReactNode][]) : []),
+                  ]}
+                />
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={`mailto:${r.parent_email}`}>
+                      <MailIcon /> Email
+                    </a>
+                  </Button>
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={`tel:${r.parent_phone}`}>
+                      <PhoneIcon /> Call
+                    </a>
+                  </Button>
+                </div>
+              </Section>
+              {Object.keys(r.extra ?? {}).length > 0 && (
+                <Section icon={ClipboardListIcon} title="Other form fields">
+                  <Fields rows={Object.entries(r.extra).map(([k, v]) => [k, String(v)])} />
+                </Section>
+              )}
+              <Section icon={CreditCardIcon} title="Payment">
+                <Fields
+                  rows={[
+                    ["Registered", dateTime(r.created_at)],
+                    ["Checkout total", money(r.checkout_total_cents)],
+                    ["Refunded", money(r.refunded_cents)],
+                    ["Stripe payment", <code className="bg-muted rounded px-1.5 py-0.5 text-xs">{r.stripe_payment_intent_id ?? "—"}</code>],
+                  ]}
+                />
+                <p className="text-muted-foreground mt-3 text-xs">The checkout total covers every player and session paid for together.</p>
+              </Section>
+              <Section icon={FileSignatureIcon} title="Waiver">
+                <Fields
+                  rows={[
+                    ["Status", <StatusBadge value={r.waiver_status} />],
+                    ["Accepted", r.waiver_accepted_at ? `${dateTime(r.waiver_accepted_at)} by ${r.waiver_accepted_name} (v${r.waiver_version})` : null],
+                  ]}
+                />
+              </Section>
+            </div>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
+  )
+}
 
-  const rows = data?.registrations ?? [];
-  const programs = useMemo(() => [...new Set(rows.map(programOf))].sort(), [rows]);
-  const towns = useMemo(() => [...new Set(rows.map((r) => r.parent_town.trim()))].sort((a, b) => a.localeCompare(b)), [rows]);
+export function Registrations({ api, onExpired, refreshKey }: { api: Api; onExpired: () => void; refreshKey: number }) {
+  const load = useCallback(() => api<{ registrations: Registration[] }>("registrations"), [api])
+  const { data, error, loading, reload } = useLoad(load, onExpired, refreshKey)
+
+  const [search, setSearch] = useState("")
+  const [program, setProgram] = useState("")
+  const [town, setTown] = useState("")
+  const [payment, setPayment] = useState("")
+  const [waiver, setWaiver] = useState("")
+  const [from, setFrom] = useState("")
+  const [to, setTo] = useState("")
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "created_at", dir: -1 })
+  const [page, setPage] = useState(0)
+  const [open, setOpen] = useState<Registration | null>(null)
+
+  const rows = data?.registrations ?? []
+  const programs = useMemo(() => [...new Set(rows.map(programOf))].sort(), [rows])
+  const towns = useMemo(() => [...new Set(rows.map((r) => r.parent_town.trim()))].sort((a, b) => a.localeCompare(b)), [rows])
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const fromTs = from ? new Date(`${from}T00:00:00`).getTime() : null;
-    const toTs = to ? new Date(`${to}T23:59:59`).getTime() : null;
+    const q = search.trim().toLowerCase()
+    const fromTs = from ? new Date(`${from}T00:00:00`).getTime() : null
+    const toTs = to ? new Date(`${to}T23:59:59`).getTime() : null
     const list = rows.filter((r) => {
-      if (q && ![r.player_name, r.parent_name, r.parent_email, r.parent_phone, r.player_email ?? ""].some((v) => v.toLowerCase().includes(q))) return false;
-      if (program && programOf(r) !== program) return false;
-      if (town && r.parent_town.trim().toLowerCase() !== town.toLowerCase()) return false;
-      if (payment && r.payment_status !== payment) return false;
-      if (waiver && r.waiver_status !== waiver) return false;
-      const ts = new Date(r.created_at).getTime();
-      if (fromTs && ts < fromTs) return false;
-      if (toTs && ts > toTs) return false;
-      return true;
-    });
-    const value = (r: Registration) => (sort.key === "program" ? programOf(r) : String(r[sort.key] ?? ""));
-    return list.sort((a, b) => value(a).localeCompare(value(b)) * sort.dir);
-  }, [rows, search, program, town, payment, waiver, from, to, sort]);
+      if (q && ![r.player_name, r.parent_name, r.parent_email, r.parent_phone, r.player_email ?? ""].some((v) => v.toLowerCase().includes(q))) return false
+      if (program && programOf(r) !== program) return false
+      if (town && r.parent_town.trim().toLowerCase() !== town.toLowerCase()) return false
+      if (payment && r.payment_status !== payment) return false
+      if (waiver && r.waiver_status !== waiver) return false
+      const ts = new Date(r.created_at).getTime()
+      if (fromTs && ts < fromTs) return false
+      if (toTs && ts > toTs) return false
+      return true
+    })
+    const value = (r: Registration) => (sort.key === "program" ? programOf(r) : String(r[sort.key] ?? ""))
+    return list.sort((a, b) => value(a).localeCompare(value(b)) * sort.dir)
+  }, [rows, search, program, town, payment, waiver, from, to, sort])
 
-  const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
-  const current = Math.min(page, pages - 1);
-  const visible = filtered.slice(current * PAGE, current * PAGE + PAGE);
-  const anyFilter = search || program || town || payment || waiver || from || to;
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE))
+  const current = Math.min(page, pages - 1)
+  const visible = filtered.slice(current * PAGE, current * PAGE + PAGE)
+  const activeFilters = [search, program, town, payment, waiver, from, to].filter(Boolean).length
 
   const reset = () => {
-    setSearch(""); setProgram(""); setTown(""); setPayment(""); setWaiver(""); setFrom(""); setTo(""); setPage(0);
-  };
-  const filterSetter = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(0); };
-  const sortBy = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : key === "created_at" ? -1 : 1 }));
-  const arrow = (key: SortKey) => (sort.key === key ? (sort.dir === 1 ? "↑" : "↓") : "");
+    setSearch(""); setProgram(""); setTown(""); setPayment(""); setWaiver(""); setFrom(""); setTo(""); setPage(0)
+  }
+  const set = <T,>(fn: (v: T) => void) => (v: T) => { fn(v); setPage(0) }
+  const sortBy = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : key === "created_at" ? -1 : 1 }))
+
+  const SortHead = ({ k, children, className }: { k: SortKey; children: ReactNode; className?: string }) => (
+    <TableHead className={className}>
+      <button className="hover:text-foreground inline-flex items-center gap-1 rounded transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" onClick={() => sortBy(k)}>
+        {children}
+        {sort.key === k ? sort.dir === 1 ? <ArrowUpIcon className="size-3" /> : <ArrowDownIcon className="size-3" /> : <ChevronsUpDownIcon className="size-3 opacity-50" />}
+      </button>
+    </TableHead>
+  )
 
   return (
-    <>
-      <div className="page-head">
-        <div>
-          <h1>Registrations</h1>
-          <p>Every paid registration, saved automatically when Stripe confirms the payment.</p>
-        </div>
-        <div className="card-actions">
-          <Button variant="secondary" onClick={reload} disabled={loading}>Refresh</Button>
+    <div className="space-y-6">
+      <PageHeader
+        title="Registrations"
+        description="Every paid registration, saved automatically when Stripe confirms the payment."
+        actions={
           <Button disabled={!filtered.length} onClick={() => downloadCsv(`footyup-registrations-${stamp()}.csv`, CSV_COLUMNS, filtered)}>
-            Export CSV{anyFilter ? ` (${filtered.length})` : ""}
+            <DownloadIcon />
+            Export CSV{activeFilters ? ` (${filtered.length})` : ""}
           </Button>
-        </div>
-      </div>
+        }
+      />
 
-      <Card>
-        <div className="filters">
-          <input className="input" placeholder="Search player, parent, email or phone" value={search} onChange={(e) => filterSetter(setSearch)(e.target.value)} aria-label="Search" />
-          <select className="select" value={program} onChange={(e) => filterSetter(setProgram)(e.target.value)} aria-label="Program">
-            <option value="">All programs</option>
-            {programs.map((p) => <option key={p}>{p}</option>)}
-          </select>
-          <select className="select" value={town} onChange={(e) => filterSetter(setTown)(e.target.value)} aria-label="Town">
-            <option value="">All towns</option>
-            {towns.map((t) => <option key={t}>{t}</option>)}
-          </select>
-          <select className="select" value={payment} onChange={(e) => filterSetter(setPayment)(e.target.value)} aria-label="Payment status">
-            <option value="">Any payment</option>
-            <option value="paid">Paid</option>
-            <option value="partially_refunded">Partially refunded</option>
-            <option value="refunded">Refunded</option>
-          </select>
-          <select className="select" value={waiver} onChange={(e) => filterSetter(setWaiver)(e.target.value)} aria-label="Waiver">
-            <option value="">Any waiver</option>
-            <option value="accepted">Accepted</option>
-            <option value="not_collected">Not collected</option>
-          </select>
-          <div style={{ display: "flex", gap: 6 }}>
-            <input className="input" type="date" value={from} onChange={(e) => filterSetter(setFrom)(e.target.value)} aria-label="Registered from" />
-            <input className="input" type="date" value={to} onChange={(e) => filterSetter(setTo)(e.target.value)} aria-label="Registered to" />
+      <Card className="gap-0 overflow-hidden py-0">
+        <div className="space-y-3 border-b p-4">
+          <div className="relative">
+            <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+            <Input className="bg-background pl-9" placeholder="Search player, parent, email or phone" value={search} onChange={(e) => set(setSearch)(e.target.value)} aria-label="Search registrations" />
           </div>
-        </div>
-        <div className="filters-actions">
-          <span>
-            Showing {filtered.length} of {rows.length}
-          </span>
-          {anyFilter && <button className="link" onClick={reset}>Clear filters</button>}
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_auto_auto]">
+            <NativeSelect value={program} onChange={(e) => set(setProgram)(e.target.value)} aria-label="Program">
+              <option value="">All programs</option>
+              {programs.map((p) => <option key={p}>{p}</option>)}
+            </NativeSelect>
+            <NativeSelect value={town} onChange={(e) => set(setTown)(e.target.value)} aria-label="Town">
+              <option value="">All towns</option>
+              {towns.map((t) => <option key={t}>{t}</option>)}
+            </NativeSelect>
+            <NativeSelect value={payment} onChange={(e) => set(setPayment)(e.target.value)} aria-label="Payment status">
+              <option value="">Any payment</option>
+              <option value="paid">Paid</option>
+              <option value="partially_refunded">Partially refunded</option>
+              <option value="refunded">Refunded</option>
+            </NativeSelect>
+            <NativeSelect value={waiver} onChange={(e) => set(setWaiver)(e.target.value)} aria-label="Waiver">
+              <option value="">Any waiver</option>
+              <option value="accepted">Accepted</option>
+              <option value="not_collected">Not collected</option>
+            </NativeSelect>
+            <Input type="date" className="bg-background lg:w-36" value={from} onChange={(e) => set(setFrom)(e.target.value)} aria-label="Registered from" />
+            <Input type="date" className="bg-background lg:w-36" value={to} onChange={(e) => set(setTo)(e.target.value)} aria-label="Registered to" />
+          </div>
+          <div className="text-muted-foreground flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span>
+              Showing <span className="text-foreground font-medium">{filtered.length}</span> of {rows.length} registrations
+            </span>
+            {activeFilters > 0 && (
+              <Button variant="ghost" size="xs" onClick={reset}>
+                <XIcon /> Clear {activeFilters} filter{activeFilters > 1 ? "s" : ""}
+              </Button>
+            )}
+          </div>
         </div>
 
         {loading && !data ? (
-          <Spinner label="Loading registrations…" />
-        ) : error ? (
+          <TableSkeleton />
+        ) : error && !data ? (
           <ErrorState message={error} onRetry={reload} />
         ) : rows.length === 0 ? (
-          <EmptyState title="No registrations yet">They appear here as soon as a family completes payment.</EmptyState>
+          <EmptyState icon={ClipboardListIcon} title="No registrations yet">They appear here as soon as a family completes payment.</EmptyState>
         ) : filtered.length === 0 ? (
-          <EmptyState title="Nothing matches these filters">
-            <button className="link" onClick={reset}>Clear filters</button>
-          </EmptyState>
+          <EmptyState icon={SearchIcon} title="Nothing matches these filters" action={<Button variant="outline" size="sm" onClick={reset}>Clear filters</Button>} />
         ) : (
           <>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th><button onClick={() => sortBy("created_at")}>Registered {arrow("created_at")}</button></th>
-                    <th><button onClick={() => sortBy("player_name")}>Player {arrow("player_name")}</button></th>
-                    <th><button onClick={() => sortBy("program")}>Program {arrow("program")}</button></th>
-                    <th>Parent</th>
-                    <th><button onClick={() => sortBy("parent_town")}>Town {arrow("parent_town")}</button></th>
-                    <th>Payment</th>
-                    <th>Waiver</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.map((r) => (
-                    <tr key={r.id} onClick={() => setOpen(r)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && setOpen(r)}>
-                      <td>{dateTime(r.created_at)}</td>
-                      <td>
-                        {r.player_name}
-                        <div className="sub">Age {r.player_age}</div>
-                      </td>
-                      <td>{programOf(r)}</td>
-                      <td>
-                        {r.parent_name}
-                        <div className="sub">{r.parent_email}</div>
-                      </td>
-                      <td>{r.parent_town}</td>
-                      <td><Badge value={r.payment_status} /></td>
-                      <td><Badge value={r.waiver_status} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <SortHead k="player_name">Player</SortHead>
+                  <SortHead k="program">Program</SortHead>
+                  <TableHead className="hidden md:table-cell">Parent</TableHead>
+                  <SortHead k="parent_town" className="hidden lg:table-cell">Town</SortHead>
+                  <SortHead k="created_at" className="hidden sm:table-cell">Registered</SortHead>
+                  <TableHead>Payment</TableHead>
+                  <TableHead className="hidden xl:table-cell">Waiver</TableHead>
+                  <TableHead className="w-8" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visible.map((r) => (
+                  <TableRow key={r.id} className="cursor-pointer" onClick={() => setOpen(r)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && setOpen(r)}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <NameAvatar name={r.player_name} />
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{r.player_name}</p>
+                          <p className="text-muted-foreground text-xs">Age {r.player_age}</p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-2">
+                        <ProgramDot program={programOf(r)} />
+                        <span className="max-w-[220px] truncate">{programOf(r)}</span>
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <p>{r.parent_name}</p>
+                      <p className="text-muted-foreground text-xs">{r.parent_email}</p>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">{r.parent_town}</TableCell>
+                    <TableCell className="text-muted-foreground hidden sm:table-cell">{dateTime(r.created_at)}</TableCell>
+                    <TableCell><StatusBadge value={r.payment_status} /></TableCell>
+                    <TableCell className="hidden xl:table-cell"><StatusBadge value={r.waiver_status} /></TableCell>
+                    <TableCell><ChevronRightIcon className="text-muted-foreground size-4" /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <div className="text-muted-foreground flex flex-wrap items-center justify-between gap-3 border-t px-5 py-3 text-xs">
+              <span>
+                {current * PAGE + 1}–{Math.min((current + 1) * PAGE, filtered.length)} of {filtered.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="icon-sm" disabled={current === 0} onClick={() => setPage(current - 1)} aria-label="Previous page">
+                  <ChevronLeftIcon />
+                </Button>
+                <span className="px-2 tabular-nums">
+                  Page {current + 1} of {pages}
+                </span>
+                <Button variant="outline" size="icon-sm" disabled={current >= pages - 1} onClick={() => setPage(current + 1)} aria-label="Next page">
+                  <ChevronRightIcon />
+                </Button>
+              </div>
             </div>
-            <Pager page={current} pages={pages} total={filtered.length} onPage={setPage} />
           </>
         )}
       </Card>
-      {open && <RegistrationDrawer r={open} onClose={() => setOpen(null)} />}
-    </>
-  );
+      <RegistrationSheet r={open} onClose={() => setOpen(null)} />
+    </div>
+  )
 }

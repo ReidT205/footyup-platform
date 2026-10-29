@@ -56,7 +56,21 @@ async function overview(req: Request, deps: Deps) {
                (select count(*)::int from public.private_training_requests where status = 'new') as new_requests,
                (select count(*)::int from public.waitlist_entries where status = 'waiting') as waiting,
                (select count(*)::int from public.payments where intent_id is null) as legacy_payments`;
-      return { me: { email: user.email }, event: event ?? null, codes, miami, byCamp, totals };
+      const daily = await tx`
+        select to_char(d, 'YYYY-MM-DD') as day,
+               (select count(*)::int from public.registrations r join public.payments p on p.id = r.payment_id
+                 where r.status = 'active' and p.status <> 'refunded'
+                   and (r.created_at at time zone 'America/New_York')::date = d) as registrations
+          from generate_series(public.app_today() - 13, public.app_today(), interval '1 day') as d
+         order by d`;
+      const recent = await tx`
+        select r.id, r.created_at, r.player_name, r.parent_town, c.name as camp, s.name as session, r.miami_group
+          from public.registrations r
+          join public.camps c on c.id = r.camp_id
+          left join public.sessions s on s.id = r.session_id
+         order by r.created_at desc, r.line_no
+         limit 6`;
+      return { me: { email: user.email }, event: event ?? null, codes, miami, byCamp, totals, daily, recent };
     }),
   );
 }

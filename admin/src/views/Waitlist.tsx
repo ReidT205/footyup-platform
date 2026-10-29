@@ -1,10 +1,16 @@
-import { useCallback } from "react";
-import type { Api } from "../api";
-import { downloadCsv, stamp, type Column } from "../csv";
-import { dateTime } from "../format";
-import { programOf, type WaitlistEntry } from "../types";
-import { Badge, Button, Card, EmptyState, ErrorState, Spinner } from "../ui";
-import { useLoad } from "../useLoad";
+import { useCallback } from "react"
+import { DownloadIcon, HourglassIcon } from "lucide-react"
+
+import type { Api } from "../api"
+import { downloadCsv, stamp, type Column } from "../csv"
+import { dateTime } from "../format"
+import { programOf, type WaitlistEntry } from "../types"
+import { useLoad } from "../useLoad"
+import { EmptyState, ErrorState, NameAvatar, PageHeader, TableSkeleton } from "@/components/app/states"
+import { ProgramDot, StatusBadge } from "@/components/app/status-badge"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 const CSV: Column<WaitlistEntry>[] = [
   { header: "Joined", value: (r) => r.created_at },
@@ -15,55 +21,72 @@ const CSV: Column<WaitlistEntry>[] = [
   { header: "Town", value: (r) => r.town },
   { header: "Spots", value: (r) => r.spots },
   { header: "Status", value: (r) => r.status },
-];
+]
 
-export function Waitlist({ api, onExpired }: { api: Api; onExpired: () => void }) {
-  const load = useCallback(() => api<{ waitlist: WaitlistEntry[] }>("waitlist"), [api]);
-  const { data, error, loading, reload } = useLoad(load, onExpired);
-  const rows = data?.waitlist ?? [];
+export function Waitlist({ api, onExpired, refreshKey }: { api: Api; onExpired: () => void; refreshKey: number }) {
+  const load = useCallback(() => api<{ waitlist: WaitlistEntry[] }>("waitlist"), [api])
+  const { data, error, loading, reload } = useLoad(load, onExpired, refreshKey)
+  const rows = data?.waitlist ?? []
 
   return (
-    <>
-      <div className="page-head">
-        <div>
-          <h1>Waitlist</h1>
-          <p>Families who asked for a spot after a session or Miami group filled, in the order they joined.</p>
-        </div>
-        <div className="card-actions">
-          <Button variant="secondary" onClick={reload} disabled={loading}>Refresh</Button>
-          <Button disabled={!rows.length} onClick={() => downloadCsv(`footyup-waitlist-${stamp()}.csv`, CSV, rows)}>Export CSV</Button>
-        </div>
-      </div>
-      <Card>
+    <div className="space-y-6">
+      <PageHeader
+        title="Waitlist"
+        description="Families who asked for a spot after a session or Miami group filled, in the order they joined."
+        actions={
+          <Button variant="outline" disabled={!rows.length} onClick={() => downloadCsv(`footyup-waitlist-${stamp()}.csv`, CSV, rows)}>
+            <DownloadIcon /> Export CSV
+          </Button>
+        }
+      />
+      <Card className="gap-0 overflow-hidden py-0">
         {loading && !data ? (
-          <Spinner />
-        ) : error ? (
+          <TableSkeleton rows={4} />
+        ) : error && !data ? (
           <ErrorState message={error} onRetry={reload} />
         ) : rows.length === 0 ? (
-          <EmptyState title="Nobody is waiting">When a session or Miami group fills, families can join the waitlist and appear here.</EmptyState>
+          <EmptyState icon={HourglassIcon} title="Nobody is waiting">
+            When a session or Miami group fills, families can join the waitlist and appear here in order.
+          </EmptyState>
         ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr><th>#</th><th>Joined</th><th>Program</th><th>Parent</th><th>Town</th><th className="num">Spots</th><th>Status</th></tr>
-              </thead>
-              <tbody>
-                {rows.map((r, i) => (
-                  <tr key={r.id} style={{ cursor: "default" }}>
-                    <td className="sub">{i + 1}</td>
-                    <td>{dateTime(r.created_at)}</td>
-                    <td>{programOf(r)}</td>
-                    <td>{r.parent_name}<div className="sub">{r.email} · {r.phone}</div></td>
-                    <td>{r.town}</td>
-                    <td className="num">{r.spots}</td>
-                    <td><Badge value={r.status} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-12">#</TableHead>
+                <TableHead>Family</TableHead>
+                <TableHead>Program</TableHead>
+                <TableHead className="hidden md:table-cell">Town</TableHead>
+                <TableHead className="hidden sm:table-cell">Joined</TableHead>
+                <TableHead className="text-right">Spots</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r, i) => (
+                <TableRow key={r.id}>
+                  <TableCell className="text-muted-foreground tabular-nums">{i + 1}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <NameAvatar name={r.parent_name} />
+                      <div>
+                        <p className="font-medium">{r.parent_name}</p>
+                        <p className="text-muted-foreground text-xs">{r.email} · {r.phone}</p>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <span className="inline-flex items-center gap-2"><ProgramDot program={programOf(r)} />{programOf(r)}</span>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">{r.town}</TableCell>
+                  <TableCell className="text-muted-foreground hidden sm:table-cell">{dateTime(r.created_at)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{r.spots}</TableCell>
+                  <TableCell><StatusBadge value={r.status} /></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
       </Card>
-    </>
-  );
+    </div>
+  )
 }

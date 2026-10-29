@@ -1,151 +1,237 @@
-import type { Api } from "../api";
-import { dateRange, dateTime, money } from "../format";
-import type { MiamiGroupRow, Overview as OverviewData } from "../types";
-import { Card, EmptyState, ErrorState, Spinner } from "../ui";
-import { useLoad } from "../useLoad";
-import { useCallback } from "react";
+import { useCallback } from "react"
+import { CalendarDaysIcon, ClipboardListIcon, DollarSignIcon, HourglassIcon, MessageSquareTextIcon } from "lucide-react"
 
-function phaseText(data: OverviewData): { text: string; tone: string } {
-  const e = data.event;
-  if (!e) return { text: "Miami not configured", tone: "#64748b" };
-  const now = Date.now();
-  if (!e.checkout_open) return { text: "Checkout paused", tone: "#b42318" };
-  if (e.closes_at && new Date(e.closes_at).getTime() <= now) return { text: `Closed ${dateTime(e.closes_at)}`, tone: "#64748b" };
-  if (e.opens_at && new Date(e.opens_at).getTime() > now) return { text: `Opens ${dateTime(e.opens_at)}`, tone: "#93370d" };
-  if (data.codes.required) return { text: "Open to access-code holders only", tone: "#93370d" };
-  return { text: "Open to everyone", tone: "#0b6533" };
+import type { Api } from "../api"
+import { dateRange, dateTime, money } from "../format"
+import { programOf, type MiamiGroupRow, type Overview as OverviewData } from "../types"
+import { useLoad } from "../useLoad"
+import { StatCard } from "@/components/app/stat-card"
+import { EmptyState, ErrorState, NameAvatar, PageHeader } from "@/components/app/states"
+import { ProgramDot } from "@/components/app/status-badge"
+import { AnimatedCircularProgressBar } from "@/components/magicui/animated-circular-progress-bar"
+import { BlurFade } from "@/components/magicui/blur-fade"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+
+export function miamiPhase(data: Pick<OverviewData, "event" | "codes">): { label: string; tone: "open" | "pending" | "closed"; detail: string } | null {
+  const e = data.event
+  if (!e) return null
+  const now = Date.now()
+  if (!e.checkout_open) return { label: "Checkout paused", tone: "closed", detail: "Turned off in settings" }
+  if (e.closes_at && new Date(e.closes_at).getTime() <= now) return { label: "Registration closed", tone: "closed", detail: `Closed ${dateTime(e.closes_at)}` }
+  if (e.opens_at && new Date(e.opens_at).getTime() > now) return { label: "Not open yet", tone: "pending", detail: `Opens ${dateTime(e.opens_at)}` }
+  if (data.codes.required) return { label: "Access-code holders only", tone: "pending", detail: e.public_opens_at ? `Public from ${dateTime(e.public_opens_at)}` : "Public opening not set" }
+  return { label: "Open to everyone", tone: "open", detail: e.closes_at ? `Closes ${dateTime(e.closes_at)}` : "No closing date" }
 }
 
-function GroupCard({ g, codesActive }: { g: MiamiGroupRow; codesActive: boolean }) {
-  const paidPct = g.cap ? Math.min(100, (g.paid / g.cap) * 100) : 0;
-  const heldPct = g.cap ? Math.min(100 - paidPct, (g.held / g.cap) * 100) : 0;
-  const samePrice = g.price_code_holder_cents === g.price_public_cents || g.price_code_holder_cents == null;
+function GroupPanel({ g, codesActive }: { g: MiamiGroupRow; codesActive: boolean }) {
+  const filled = g.paid + g.held
+  const pct = g.cap ? Math.min(100, Math.round((filled / g.cap) * 100)) : 0
+  const samePrice = g.price_code_holder_cents == null || g.price_code_holder_cents === g.price_public_cents
+  const accent = g.grp === "boys" ? "var(--color-sky-500)" : "var(--color-pink-500)"
   return (
-    <Card>
-      <div className="card-body">
-        <div className="group-head">
-          <h3>{g.label}</h3>
-          <span className="sub">{dateRange(g.starts_on, g.ends_on)}</span>
+    <div className="flex flex-col gap-5 rounded-xl border bg-gradient-to-b from-muted/40 to-card p-5 sm:flex-row sm:items-center">
+      <AnimatedCircularProgressBar
+        value={pct}
+        gaugePrimaryColor={accent}
+        gaugeSecondaryColor="var(--color-zinc-200)"
+        label="full"
+        className="size-28 shrink-0 self-center text-xl"
+      />
+      <div className="min-w-0 flex-1 space-y-4">
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="flex items-center gap-2 text-base font-semibold">
+            <span className="size-2.5 rounded-full" style={{ background: accent }} aria-hidden />
+            {g.label}
+          </h3>
+          <span className="text-muted-foreground flex items-center gap-1 text-xs">
+            <CalendarDaysIcon className="size-3.5" />
+            {dateRange(g.starts_on, g.ends_on)}
+          </span>
         </div>
-        <div className="meter" aria-label={`${g.paid} of ${g.cap} spots paid`}>
-          <div className="meter-paid" style={{ width: `${paidPct}%` }} />
-          <div className="meter-held" style={{ width: `${heldPct}%` }} />
-        </div>
-        <div className="meter-legend">
-          <span><span className="dot" style={{ background: "var(--primary)" }} />{g.paid} paid</span>
-          <span><span className="dot" style={{ background: "#86d0a5" }} />{g.held} in checkout now</span>
-          <span>{g.cap} total spots</span>
-        </div>
-        <div className="kv">
-          <div><span>Open to public</span><strong>{g.left_for_public}</strong></div>
-          <div><span>Open to code holders</span><strong>{codesActive ? g.left_for_code_holders : "—"}</strong></div>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
           <div>
-            <span>Price</span>
-            <strong>{samePrice ? money(g.price_public_cents) : `${money(g.price_public_cents)} / ${money(g.price_code_holder_cents)}`}</strong>
+            <dt className="text-muted-foreground text-xs">Paid</dt>
+            <dd className="font-semibold tabular-nums">
+              {g.paid} <span className="text-muted-foreground font-normal">/ {g.cap}</span>
+            </dd>
           </div>
-        </div>
+          <div>
+            <dt className="text-muted-foreground text-xs">In checkout now</dt>
+            <dd className="font-semibold tabular-nums">{g.held}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground text-xs">Open to public</dt>
+            <dd className="font-semibold tabular-nums">{g.left_for_public}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground text-xs">Open to code holders</dt>
+            <dd className="font-semibold tabular-nums">{codesActive ? g.left_for_code_holders : "—"}</dd>
+          </div>
+        </dl>
+        <p className="text-muted-foreground border-t pt-3 text-xs">
+          Price <span className="text-foreground font-medium">{samePrice ? money(g.price_public_cents) : `${money(g.price_public_cents)} public · ${money(g.price_code_holder_cents)} host families`}</span>
+        </p>
       </div>
-    </Card>
-  );
+    </div>
+  )
 }
 
-export function Overview({ api, onExpired }: { api: Api; onExpired: () => void }) {
-  const load = useCallback(() => api<OverviewData>("overview"), [api]);
-  const { data, error, loading, reload } = useLoad(load, onExpired);
+function OverviewSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }, (_, i) => (
+          <Skeleton key={i} className="h-[134px] rounded-xl" />
+        ))}
+      </div>
+      <Skeleton className="h-72 rounded-xl" />
+    </div>
+  )
+}
 
-  if (loading && !data) return <Spinner />;
-  if (error) return <ErrorState message={error} onRetry={reload} />;
-  if (!data) return null;
+export function Overview({ api, onExpired, refreshKey }: { api: Api; onExpired: () => void; refreshKey: number }) {
+  const load = useCallback(() => api<OverviewData>("overview"), [api])
+  const { data, error, loading, reload } = useLoad(load, onExpired, refreshKey)
 
-  const phase = phaseText(data);
-  const reserved = data.event?.reserved_total ?? 0;
+  if (loading && !data) return <OverviewSkeleton />
+  if (error && !data) return <Card><ErrorState message={error} onRetry={reload} /></Card>
+  if (!data) return null
+
+  const phase = miamiPhase(data)
+  const daily = data.daily ?? []
+  const recent = data.recent ?? []
+  const weekTotal = daily.slice(-7).reduce((s, d) => s + d.registrations, 0)
+  const maxProgram = Math.max(1, ...data.byCamp.map((r) => r.registrations))
+  const reserved = data.event?.reserved_total ?? 0
 
   return (
-    <>
-      <div className="page-head">
-        <div>
-          <h1>Overview</h1>
-          <p>Paid registrations only. Refunded registrations are not counted.</p>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <PageHeader title="Overview" description="Paid registrations only. Refunds are taken out automatically." />
 
-      <div className="grid grid-4">
-        <Card className="stat">
-          <div className="stat-label">Registrations</div>
-          <div className="stat-value">{data.totals.registrations}</div>
-        </Card>
-        <Card className="stat">
-          <div className="stat-label">Collected (after refunds)</div>
-          <div className="stat-value">{money(data.totals.net_cents)}</div>
-          <div className="stat-sub">Before Stripe fees</div>
-        </Card>
-        <Card className="stat">
-          <div className="stat-label">New training requests</div>
-          <div className="stat-value">{data.totals.new_requests}</div>
-        </Card>
-        <Card className="stat">
-          <div className="stat-label">On waitlists</div>
-          <div className="stat-value">{data.totals.waiting}</div>
-        </Card>
-      </div>
+      <BlurFade delay={0.05} inView={false}>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label="Registrations"
+            value={data.totals.registrations}
+            icon={ClipboardListIcon}
+            tone="brand"
+            trend={daily.map((d) => d.registrations)}
+            hint={`${weekTotal} in the last 7 days`}
+          />
+          <StatCard label="Collected" prefix="$" value={Math.round(data.totals.net_cents / 100)} icon={DollarSignIcon} hint="After refunds, before Stripe fees" />
+          <StatCard label="New training requests" value={data.totals.new_requests} icon={MessageSquareTextIcon} tone="info" hint="From the website form" />
+          <StatCard label="On waitlists" value={data.totals.waiting} icon={HourglassIcon} tone="warning" hint="Waiting for a spot" />
+        </div>
+      </BlurFade>
 
       {data.event && (
-        <Card
-          title={data.event.name}
-          actions={
-            <span className="phase" style={{ color: phase.tone }}>
-              <span className="dot" style={{ background: phase.tone }} />
-              {phase.text}
-            </span>
-          }
-        >
-          <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div className="grid grid-2">
+        <BlurFade delay={0.12} inView={false}>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">{data.event.name}</CardTitle>
+              <CardDescription>
+                {reserved > 0 && data.codes.active ? `${reserved} spots across both groups are held for host-school families. ` : ""}
+                {phase?.detail}
+              </CardDescription>
+              {phase && (
+                <CardAction>
+                  <Badge
+                    variant={phase.tone === "open" ? "success-light" : phase.tone === "pending" ? "warning-light" : "secondary"}
+                    size="lg"
+                    className="gap-1.5"
+                  >
+                    <span className="relative flex size-2">
+                      {phase.tone === "open" && <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" />}
+                      <span className="relative inline-flex size-2 rounded-full bg-current" />
+                    </span>
+                    {phase.label}
+                  </Badge>
+                </CardAction>
+              )}
+            </CardHeader>
+            <CardContent className="grid gap-4 lg:grid-cols-2">
               {data.miami.map((g) => (
-                <GroupCard key={g.grp} g={g} codesActive={data.codes.active} />
+                <GroupPanel key={g.grp} g={g} codesActive={data.codes.active} />
               ))}
-            </div>
-            <div className="sub">
-              {reserved > 0 && data.codes.active
-                ? `${reserved} spots across both groups are held for access-code holders${data.event.reserved_until ? ` until ${dateTime(data.event.reserved_until)}` : ""}. `
-                : ""}
-              {data.event.closes_at ? `Registration closes ${dateTime(data.event.closes_at)}.` : ""}
-            </div>
-          </div>
-        </Card>
+            </CardContent>
+          </Card>
+        </BlurFade>
       )}
 
-      <Card title="Registrations by program">
-        {data.byCamp.length === 0 ? (
-          <EmptyState title="No registrations yet">Paid registrations appear here as soon as Stripe confirms the payment.</EmptyState>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Program</th>
-                  <th>Session / group</th>
-                  <th className="num">Registrations</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.byCamp.map((row) => (
-                  <tr key={`${row.camp}-${row.session}`} style={{ cursor: "default" }}>
-                    <td>{row.camp}</td>
-                    <td>{row.session}</td>
-                    <td className="num">{row.registrations}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {data.totals.legacy_payments > 0 && (
-          <div className="pager">
-            {data.totals.legacy_payments} payment(s) came through the old site checkout. They're saved in the database with their Stripe details.
-          </div>
-        )}
-      </Card>
-    </>
-  );
+      <BlurFade delay={0.18} inView={false}>
+        <div className="grid gap-6 lg:grid-cols-5">
+          <Card className="min-w-0 lg:col-span-3">
+            <CardHeader>
+              <CardTitle className="text-base">Registrations by program</CardTitle>
+              <CardDescription>Paid registrations per session and Miami group</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {data.byCamp.length === 0 ? (
+                <EmptyState icon={ClipboardListIcon} title="No registrations yet" className="py-10">
+                  They appear here as soon as Stripe confirms a payment.
+                </EmptyState>
+              ) : (
+                <ul className="space-y-4">
+                  {data.byCamp.map((row) => {
+                    const program = row.kind === "miami" ? `Miami – ${row.session}` : `${row.camp} – ${row.session}`
+                    return (
+                      <li key={`${row.camp}-${row.session}`} className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <ProgramDot program={program} />
+                            <span className="truncate">
+                              <span className="font-medium">{row.kind === "miami" ? "Miami combine" : row.camp}</span>
+                              <span className="text-muted-foreground"> · {row.session}</span>
+                            </span>
+                          </span>
+                          <span className="font-semibold tabular-nums">{row.registrations}</span>
+                        </div>
+                        <div className="bg-muted h-1.5 overflow-hidden rounded-full">
+                          <div className="h-full rounded-full bg-brand transition-[width] duration-700" style={{ width: `${(row.registrations / maxProgram) * 100}%` }} />
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+              {data.totals.legacy_payments > 0 && (
+                <p className="text-muted-foreground mt-5 border-t pt-4 text-xs">
+                  {data.totals.legacy_payments} payment(s) came through the old site checkout and are saved with their Stripe details.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="min-w-0 lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-base">Latest registrations</CardTitle>
+              <CardDescription>Most recent first</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {recent.length === 0 ? (
+                <EmptyState title="Nothing yet" className="py-10" />
+              ) : (
+                <ul className="divide-y">
+                  {recent.map((r) => (
+                    <li key={r.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                      <NameAvatar name={r.player_name} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{r.player_name}</p>
+                        <p className="text-muted-foreground truncate text-xs">
+                          {programOf(r)} · {r.parent_town}
+                        </p>
+                      </div>
+                      <span className="text-muted-foreground shrink-0 text-xs">{dateTime(r.created_at).replace(/, \d{4}/, "")}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </BlurFade>
+    </div>
+  )
 }

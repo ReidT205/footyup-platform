@@ -36,9 +36,18 @@ async function send(res: ServerResponse, response: Response) {
 function html(body: string, status = 200) {
   return new Response(
     `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Footy Up API (local)</title>
-<style>body{font:16px/1.5 system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;color:#0f172a}code{background:#f1f5f9;padding:2px 6px;border-radius:4px}
-button{font:inherit;padding:10px 18px;border-radius:8px;border:0;margin-right:8px;cursor:pointer}.pay{background:#16a34a;color:#fff}.cancel{background:#e2e8f0}
-.box{border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin:20px 0}li{margin:4px 0}</style></head><body>${body}</body></html>`,
+<style>
+*{box-sizing:border-box}body{font:15px/1.6 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;margin:0;color:#18181b;background:#f8fafc;
+background-image:radial-gradient(#d4d4d8 1px,transparent 1px);background-size:18px 18px}
+main{max-width:560px;margin:56px auto;padding:32px;background:#fff;border:1px solid #e4e4e7;border-radius:16px;box-shadow:0 10px 30px -12px rgb(24 24 27/.15)}
+h1{font-size:22px;letter-spacing:-.01em;margin:0 0 6px}p{color:#52525b;margin:8px 0}a{color:#047857;font-weight:500}
+.mark{display:inline-grid;place-items:center;width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#10b981,#047857);color:#fff;font-weight:700;margin-bottom:16px}
+code{background:#f4f4f5;padding:2px 6px;border-radius:6px;font-size:13px}ul{padding-left:18px}li{margin:4px 0}
+.box{border:1px solid #e4e4e7;border-radius:12px;padding:18px;margin:20px 0;background:#fafafa}
+button{font:inherit;font-weight:500;height:40px;padding:0 18px;border-radius:9px;border:1px solid transparent;margin:8px 8px 0 0;cursor:pointer}
+.pay{background:#18181b;color:#fff}.pay:hover{background:#27272a}.cancel{background:#fff;border-color:#e4e4e7}.cancel:hover{background:#f4f4f5}
+.tag{display:inline-block;font-size:12px;font-weight:500;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:999px;padding:2px 10px}
+</style></head><body><main><div class="mark">FU</div>${body}</main></body></html>`,
     { status, headers: { "content-type": "text/html; charset=utf-8" } },
   );
 }
@@ -103,7 +112,7 @@ async function mockCheckout(req: Request, url: URL): Promise<Response> {
   const items = session.input.lines
     .map((l) => `<li>${l.quantity} × ${l.name} — ${(l.unitAmountCents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })}</li>`)
     .join("");
-  return html(`<h1>Mock Stripe Checkout</h1><p>Local testing only. No money moves.</p>
+  return html(`<span class="tag">Local test checkout · no money moves</span><h1 style="margin-top:12px">Mock Stripe Checkout</h1><p>Stands in for Stripe while testing locally.</p>
     <div class="box"><ul>${items}</ul><p><strong>Total: ${total}</strong></p>
     <form method="post" style="display:inline" action="/__mock/checkout/${session.id}/pay"><button class="pay">Pay (test)</button></form>
     <form method="post" style="display:inline" action="/__mock/checkout/${session.id}/cancel"><button class="cancel">Abandon checkout</button></form></div>`);

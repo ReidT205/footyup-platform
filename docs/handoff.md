@@ -50,10 +50,18 @@ All permissive licenses, as the Agreement (§4) requires. Check any time with
 | `typescript` (dev) | Apache-2.0 | Type checking |
 | `tsx` (dev) | MIT | Running TypeScript scripts and tests |
 | `react`, `react-dom` (dev, bundled) | MIT | Admin dashboard |
-| `esbuild` (dev) | MIT | Bundling the admin dashboard |
+| `esbuild` (dev) | MIT | Bundling and minifying the admin dashboard |
+| `tailwindcss` (dev) | MIT | Dashboard styles (its compiler is called directly, without `@tailwindcss/cli`, whose `lightningcss` dependency is MPL-2.0) |
+| `tw-animate-css` (dev) | MIT | Enter/exit animations |
+| `radix-ui` (dev, bundled) | MIT | Accessible primitives (dialog, dropdown, tooltip, avatar) |
+| `motion` (dev, bundled) | MIT | Dashboard animations |
+| `lucide-react` (dev, bundled) | ISC | Icons |
+| `class-variance-authority` (dev, bundled) | Apache-2.0 | Component variants |
+| `clsx`, `tailwind-merge` (dev, bundled) | MIT | Class name helpers |
 | `@types/node`, `@types/pg`, `@types/react`, `@types/react-dom` (dev) | MIT | Type definitions |
 
 Tests use Node's built-in test runner, so no extra test framework is installed.
+Copied UI component code (ReUI, shadcn/ui, Magic UI) is credited in `THIRD_PARTY_NOTICES.md`.
 
 ## How to
 
