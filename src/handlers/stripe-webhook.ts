@@ -171,6 +171,8 @@ async function completeCheckout(tx: Db, session: Record<string, any>): Promise<W
       await recordTraining(tx, session, paymentId, { id: String(md.package_id), name: String(md.package_name ?? md.package_id) });
       return "training_recorded";
     }
+    const [seen] = await tx`select 1 from public.checkout_intents where stripe_session_id = ${session.id} and status = 'completed'`;
+    if (seen) return "already_completed";
     const legacy = await legacyRegistration(tx, session);
     if (!legacy) {
       await insertPayment(tx, session, null, true);

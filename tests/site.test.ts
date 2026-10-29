@@ -227,6 +227,8 @@ describe("payments from the site's original checkout (before the switch)", () =>
     });
     expect(await (await deliver(deps, event)).json()).toMatchObject({ result: "registered" });
     expect(await (await deliver(deps, event)).json()).toMatchObject({ result: "duplicate" });
+    const replay = deps.payments.signedEvent("checkout.session.completed", JSON.parse(event.body).data.object, "backfill_cs_old_camp");
+    expect(await (await deliver(deps, replay)).json()).toMatchObject({ result: "already_completed" });
     const regs = await db`select player_name, parent_phone, parent_town, price_cents from public.registrations order by line_no`;
     expect(regs.map((r) => r.price_cents)).toEqual([41500, 41500]);
     expect(regs[0]).toMatchObject({ player_name: "Sam Rivera", parent_phone: "+16175550111", parent_town: "Watertown" });

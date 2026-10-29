@@ -13,6 +13,7 @@ export interface SessionRow {
   early_bird_until: string | null
   capacity: number | null
   status: "open" | "closed"
+  closes_at: string | null
   info_text: string | null
   reminder_days: number[]
   sort_order: number
@@ -29,6 +30,7 @@ export interface CampRow {
   active: boolean
   description: string | null
   info_url: string | null
+  site_route: string | null
   sort_order: number
   sessions: SessionRow[]
 }
@@ -45,6 +47,8 @@ export interface MiamiGroupRow {
   reserved_until: string | null
   price_code_holder_cents: number | null
   price_public_cents: number | null
+  age_min: number | null
+  age_max: number | null
   open: boolean
   taken: number
 }
@@ -64,6 +68,7 @@ export interface MiamiEventRow {
   positions: string[]
   shirt_sizes: string[]
   short_sizes: string[]
+  price_tiers: { until: string | null; cents: number }[]
 }
 
 export interface PromoRow {

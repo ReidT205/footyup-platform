@@ -2,8 +2,8 @@ import { useState } from "react"
 import { CalendarDaysIcon, EyeOffIcon, InfoIcon, PencilIcon, PlusIcon, TentIcon, UsersIcon } from "lucide-react"
 
 import type { Api } from "../../api"
-import { dateRange, money } from "../../format"
-import { Field, MoneyInput } from "@/components/app/kit"
+import { dateRange, dateTime, money } from "../../format"
+import { EtDateTimeInput, Field, MoneyInput } from "@/components/app/kit"
 import { EmptyState } from "@/components/app/states"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -25,7 +25,7 @@ function CampSheet({ api, camp, onClose, onSaved }: { api: Api; camp: CampRow | 
   const initial = camp && camp !== "new" ? camp : null
   const [form, setForm] = useState({
     name: initial?.name ?? "", host: initial?.host ?? "", kind: initial?.kind ?? "summer", infoOnly: initial?.info_only ?? false, active: initial?.active ?? true,
-    description: initial?.description ?? "", infoUrl: initial?.info_url ?? "", sortOrder: initial?.sort_order ?? 0,
+    description: initial?.description ?? "", infoUrl: initial?.info_url ?? "", siteRoute: initial?.site_route ?? "", sortOrder: initial?.sort_order ?? 0,
   })
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -35,7 +35,7 @@ function CampSheet({ api, camp, onClose, onSaved }: { api: Api; camp: CampRow | 
     setBusy(true)
     setError(null)
     try {
-      await api("camp-save", { id: initial?.id, ...form, host: form.host || null, description: form.description || null })
+      await api("camp-save", { id: initial?.id, ...form, host: form.host || null, description: form.description || null, siteRoute: form.siteRoute.trim() || null })
       onSaved()
       onClose()
     } catch (err) {
@@ -60,6 +60,7 @@ function CampSheet({ api, camp, onClose, onSaved }: { api: Api; camp: CampRow | 
           <label className="flex items-center justify-between gap-3 rounded-lg border p-3"><span className="text-sm"><span className="font-medium">Information only</span><span className="text-muted-foreground block text-xs">No checkout (like BB&N, which handles its own sign-ups).</span></span><Switch checked={form.infoOnly} onCheckedChange={(v) => set({ infoOnly: v })} /></label>
           <Field label="Description"><Textarea rows={4} value={form.description} onChange={(e) => set({ description: e.target.value })} /></Field>
           <Field label="Sign-up or info link (optional)"><Input value={form.infoUrl} onChange={(e) => set({ infoUrl: e.target.value })} placeholder="https://" /></Field>
+          <Field label="Page on footyupp.net" hint={initial ? `Camp id on the site: ${initial.slug}. The page families return to if they cancel checkout.` : "The page families return to if they cancel checkout."}><Input value={form.siteRoute} onChange={(e) => set({ siteRoute: e.target.value })} placeholder="summerCamp/dover" /></Field>
           {error && <Notice tone="error">{error}</Notice>}
         </div>
         <SheetFooter><Button onClick={save} disabled={busy || form.name.trim().length < 2}>{busy ? "Saving…" : "Save camp"}</Button></SheetFooter>
@@ -74,7 +75,7 @@ function SessionSheet({ api, target, onClose, onSaved }: { api: Api; target: { c
     name: s?.name ?? "", startsOn: s?.starts_on ?? "", endsOn: s?.ends_on ?? "", startTime: s?.start_time ?? "", location: s?.location ?? target?.camp.host ?? "",
     ageMin: s?.age_min ?? null as number | null, ageMax: s?.age_max ?? null as number | null, priceCents: s?.price_cents ?? null as number | null,
     earlyBirdPriceCents: s?.early_bird_price_cents ?? null as number | null, earlyBirdUntil: s?.early_bird_until ?? "", capacity: s?.capacity ?? null as number | null,
-    status: s?.status ?? "open", infoText: s?.info_text ?? "", reminderDays: (s?.reminder_days ?? [7, 1]).join(", "), sortOrder: s?.sort_order ?? 0,
+    status: s?.status ?? "open", closesAt: s?.closes_at ?? null as string | null, infoText: s?.info_text ?? "", reminderDays: (s?.reminder_days ?? [7, 1]).join(", "), sortOrder: s?.sort_order ?? 0,
   })
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -89,7 +90,7 @@ function SessionSheet({ api, target, onClose, onSaved }: { api: Api; target: { c
         id: s?.id, campId: target.camp.id, name: form.name, startsOn: form.startsOn || null, endsOn: form.endsOn || null, startTime: form.startTime || null,
         location: form.location || null, ageMin: form.ageMin, ageMax: form.ageMax, priceCents: form.priceCents ?? 0,
         earlyBirdPriceCents: form.earlyBirdPriceCents, earlyBirdUntil: form.earlyBirdUntil || null, capacity: form.capacity,
-        status: form.status, infoText: form.infoText || null, sortOrder: form.sortOrder,
+        status: form.status, closesAt: form.closesAt, infoText: form.infoText || null, sortOrder: form.sortOrder,
         reminderDays: form.reminderDays.split(/[,\s]+/).filter(Boolean).map(Number).filter((n) => Number.isInteger(n) && n >= 0),
       })
       onSaved()
@@ -128,6 +129,7 @@ function SessionSheet({ api, target, onClose, onSaved }: { api: Api; target: { c
           <div className="grid grid-cols-2 gap-3">
             <Field label="Registration"><NativeSelect value={form.status} onChange={(e) => set({ status: e.target.value as "open" | "closed" })}><option value="open">Open</option><option value="closed">Closed</option></NativeSelect></Field>
             <Field label="Reminder emails" hint="Days before start, e.g. 7, 1"><Input value={form.reminderDays} onChange={(e) => set({ reminderDays: e.target.value })} /></Field>
+            <Field label="Registration closes automatically (optional)" hint="Eastern time. Checkout stops at this moment." className="col-span-2"><EtDateTimeInput value={form.closesAt} onChange={(v) => set({ closesAt: v })} /></Field>
           </div>
           <Field label="Info for parents" hint="Shown on the site and in the confirmation email (what to bring, drop-off…)."><Textarea rows={3} value={form.infoText} onChange={(e) => set({ infoText: e.target.value })} /></Field>
           {error && <Notice tone="error">{error}</Notice>}
@@ -153,7 +155,7 @@ export function CampsSettings({ api, camps, reload }: { api: Api; camps: CampRow
           <div className="flex flex-wrap items-start justify-between gap-3 border-b px-5 py-4">
             <div className="min-w-0">
               <p className="flex flex-wrap items-center gap-2 font-medium">{c.name}{!c.active && <Badge variant="secondary"><EyeOffIcon className="size-3" />Hidden</Badge>}{c.info_only && <Badge variant="info-light"><InfoIcon className="size-3" />Info only</Badge>}</p>
-              <p className="text-muted-foreground text-xs">{c.host ?? "No host set"} · {c.kind}</p>
+              <p className="text-muted-foreground text-xs">{c.host ?? "No host set"} · {c.kind}{c.site_route ? ` · footyupp.net/${c.site_route}` : ""}</p>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={() => setEditCamp(c)}><PencilIcon /> Edit camp</Button>
@@ -172,7 +174,7 @@ export function CampsSettings({ api, camps, reload }: { api: Api; camps: CampRow
                     <TableCell className="text-muted-foreground hidden md:table-cell"><span className="inline-flex items-center gap-1"><CalendarDaysIcon className="size-3.5" />{dateRange(s.starts_on, s.ends_on)}</span></TableCell>
                     <TableCell className="text-right tabular-nums">{money(s.price_cents)}{s.early_bird_price_cents !== null && <p className="text-muted-foreground text-xs">early {money(s.early_bird_price_cents)}</p>}</TableCell>
                     <TableCell className="text-right tabular-nums"><span className="inline-flex items-center gap-1"><UsersIcon className="text-muted-foreground size-3.5" />{s.taken}{s.capacity !== null ? ` / ${s.capacity}` : ""}</span></TableCell>
-                    <TableCell>{s.status === "open" ? <Badge variant="success-light">Open</Badge> : <Badge variant="secondary">Closed</Badge>}</TableCell>
+                    <TableCell>{s.status === "open" && !(s.closes_at && new Date(s.closes_at).getTime() <= Date.now()) ? <Badge variant="success-light">Open</Badge> : <Badge variant="secondary">Closed</Badge>}{s.status === "open" && s.closes_at && new Date(s.closes_at).getTime() > Date.now() && <p className="text-muted-foreground mt-1 text-xs">until {dateTime(s.closes_at)}</p>}</TableCell>
                     <TableCell><PencilIcon className="text-muted-foreground size-4" /></TableCell>
                   </TableRow>
                 ))}

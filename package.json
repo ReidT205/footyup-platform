@@ -18,6 +18,7 @@
     "settings": "tsx --env-file-if-exists=.env scripts/settings.ts",
     "waiver": "tsx --env-file-if-exists=.env scripts/waiver.ts",
     "admins": "tsx --env-file-if-exists=.env scripts/admins.ts",
+    "stripe:backfill": "tsx --env-file-if-exists=.env scripts/stripe-backfill.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p admin",
     "licenses:check": "tsx scripts/check-licenses.ts",
     "test": "tsx tests/setup-db.ts && node --import tsx --test --test-concurrency=1 tests/*.test.ts",
