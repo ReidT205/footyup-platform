@@ -230,6 +230,26 @@ Send exactly one of `sessionId` or `miamiGroup`:
 
 Returns `201 { "ok": true }`.
 
+## The live site's adapter: `/api/site/*`
+
+footyupp.net's own `api/*.js` functions forward their exact request bodies here
+(see `integration/rapobuild/README.md`), so the site's pages don't change.
+They use the site's camp ids and session values, and answer in the site's
+shapes: `{ "url" }` to redirect to Stripe, `{ "success": true }`, or
+`{ "error": "message to show" }`.
+
+| Endpoint | Body or query (as the site sends it) |
+| --- | --- |
+| `POST /api/site/checkout` | Camps: `campId, session, playerName, playerAge, parentName, parentEmail, town`. Miami: `campId, session (boys/girls), accessCode, playerName, playerEmail, playerAge, heightFt, heightIn, weight, gradYear, position, club, clothingSize, parentName, parentEmail, parentPhone, address1, address2, city, state, zip` |
+| `GET /api/site/camp-access?campId=…` | Returns `{ open, closed, gated, opensAt, closesAt, gatedUntil }` |
+| `POST /api/site/camp-access` | `{ campId, code }`; `200 { …status, ok: true }` or `403 { …status, error }` |
+| `POST /api/site/checkout-training` | `{ packageId }` (`individual_5`, `individual_7`, `individual_10`, `group2_5`, `group2_7`) |
+| `POST /api/site/inquiry` | `{ name, email, phone, players, bundle, ages, notes }` |
+| `GET /api/site/catalog` | Live prices, spots and open state per camp and session, Miami price steps and form options, training package prices |
+
+When the site's server sends `x-site-key` equal to `SITE_API_KEY`, the
+platform rate-limits by the family's IP in `x-footyup-client-ip` instead of the site server's.
+
 ## Not called by the pages
 
 - `POST /api/stripe/webhook`: Stripe only. It verifies the signature and needs the raw body.
