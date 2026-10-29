@@ -37,6 +37,14 @@ export const SETTING_DEFAULTS = {
   /** Site pages that read ?waitlist=<token> and start checkout for the held spot. */
   waitlist_session_path: "/camps",
   waitlist_miami_path: "/miami",
+  /** Private-training packages sold by the site's "Buy" buttons (ids match the site). */
+  training_packages: [
+    { id: "individual_5", name: "Individual — 5 Sessions (1 hr 30 min each)", cents: 55000 },
+    { id: "individual_7", name: "Individual — 7 Sessions (1 hr 30 min each)", cents: 64000 },
+    { id: "individual_10", name: "Individual — 10 Sessions (1 hr 30 min each)", cents: 91000 },
+    { id: "group2_5", name: "Group of 2 — 5 Sessions (1 hr 30 min each)", cents: 85000 },
+    { id: "group2_7", name: "Group of 2 — 7 Sessions (1 hr 30 min each)", cents: 100000 },
+  ] as { id: string; name: string; cents: number }[],
 };
 
 export interface SiblingDiscount {

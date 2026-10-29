@@ -6,7 +6,7 @@ import { getSettings } from "../lib/settings.js";
 
 /** POST /api/private-training (D4): replaces the Telegram flow. */
 export async function privateTraining(req: Request, deps: Deps): Promise<Response> {
-  const { db, env, mailer } = deps;
+  const { db, env } = deps;
   await enforceRateLimit(db, env, req, "privateTraining");
   const body = parse(PrivateTrainingRequest, await readJson(req));
 
@@ -25,34 +25,31 @@ export async function privateTraining(req: Request, deps: Deps): Promise<Respons
                                           'private_training', ${body.marketingOptIn ? "granted" : null})`;
   });
 
-  const settings = await getSettings(db);
-  if (settings.notify_email) {
-    try {
-      await mailer.send({
-        to: settings.notify_email,
-        replyTo: body.email,
-        subject: "New private training request",
-        text: [
-          "A new private training request came in through the website.",
-          "",
-          `Parent: ${body.parentName}`,
-          `Email: ${body.email}`,
-          `Phone: ${body.phone}`,
-          `Town: ${body.town}`,
-          `Player: ${body.playerName} (age ${body.playerAge})`,
-          body.preferredTimes ? `Preferred times: ${body.preferredTimes}` : null,
-          body.message ? `\nMessage:\n${body.message}` : null,
-          "",
-          "Reply to this email to answer the parent directly.",
-        ]
-          .filter((l) => l !== null)
-          .join("\n"),
-      });
-    } catch (err) {
-      // The request is already saved and visible in the dashboard; don't fail the parent's submission.
-      logError("private_training.notify", err);
-    }
-  }
+  await notifyTrainingRequest(deps, body.email, [
+    `Parent: ${body.parentName}`,
+    `Email: ${body.email}`,
+    `Phone: ${body.phone}`,
+    `Town: ${body.town}`,
+    `Player: ${body.playerName} (age ${body.playerAge})`,
+    body.preferredTimes ? `Preferred times: ${body.preferredTimes}` : null,
+    body.message ? `\nMessage:\n${body.message}` : null,
+  ]);
 
   return json({ ok: true } satisfies OkResponse, 201);
+}
+
+/** Emails the client about a new private training request. Never fails the parent's submission. */
+export async function notifyTrainingRequest(deps: Deps, replyTo: string, details: (string | null)[]) {
+  const settings = await getSettings(deps.db);
+  if (!settings.notify_email) return;
+  try {
+    await deps.mailer.send({
+      to: settings.notify_email,
+      replyTo,
+      subject: "New private training request",
+      text: ["A new private training request came in through the website.", "", ...details.filter((l) => l !== null), "", "Reply to this email to answer the parent directly. It's also in the dashboard under Private training."].join("\n"),
+    });
+  } catch (err) {
+    logError("private_training.notify", err);
+  }
 }

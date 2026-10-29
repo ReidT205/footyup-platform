@@ -109,10 +109,20 @@ async function requests(req: Request, deps: Deps) {
     deps,
     user,
     (tx) => tx`
-      select id, created_at, parent_name, email, phone, town, player_name, player_age, message, preferred_times, status
+      select id, created_at, parent_name, email, phone, town, player_name, player_age, message, preferred_times, status,
+             players, bundle, player_ages
         from public.private_training_requests order by created_at desc`,
   );
-  return json({ requests: rows });
+  const purchases = await asAdmin(
+    deps,
+    user,
+    (tx) => tx`
+      select t.id, t.created_at, t.package_id, t.package_name, t.parent_name, t.email, t.phone, t.player_name, t.player_age, t.status,
+             p.amount_total_cents, p.refunded_cents, p.status as payment_status
+        from public.training_purchases t join public.payments p on p.id = t.payment_id
+       order by t.created_at desc`,
+  );
+  return json({ requests: rows, purchases });
 }
 
 async function waitlist(req: Request, deps: Deps) {

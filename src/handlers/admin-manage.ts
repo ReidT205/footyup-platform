@@ -44,24 +44,24 @@ const settingsData: Handler = async (req, deps) => {
   return json(
     await asAdmin(deps, user, async (tx) => {
       const camps = await tx`
-        select c.id, c.slug, c.name, c.host, c.kind, c.info_only, c.active, c.description, c.info_url, c.sort_order,
+        select c.id, c.slug, c.name, c.host, c.kind, c.info_only, c.active, c.description, c.info_url, c.sort_order, c.site_route,
                coalesce(json_agg(json_build_object(
                  'id', s.id, 'name', s.name, 'slug', s.slug, 'starts_on', s.starts_on, 'ends_on', s.ends_on,
                  'start_time', to_char(s.start_time, 'HH24:MI'), 'location', s.location, 'age_min', s.age_min, 'age_max', s.age_max,
                  'price_cents', s.price_cents, 'early_bird_price_cents', s.early_bird_price_cents, 'early_bird_until', s.early_bird_until,
                  'capacity', s.capacity, 'status', s.status, 'info_text', s.info_text, 'reminder_days', s.reminder_days, 'sort_order', s.sort_order,
-                 'taken', public.session_taken(s.id)
+                 'taken', public.session_taken(s.id), 'closes_at', s.closes_at
                ) order by s.sort_order, s.starts_on) filter (where s.id is not null), '[]') as sessions
           from public.camps c left join public.sessions s on s.camp_id = c.id
          where c.kind <> 'miami'
          group by c.id order by c.sort_order, c.name`
       const [event] = await tx`
         select name, location, info_text, opens_at, public_opens_at, closes_at, checkout_open, hold_minutes, waiver_required,
-               reserved_total, reserved_until, positions, shirt_sizes, short_sizes from public.miami_event`
+               reserved_total, reserved_until, positions, shirt_sizes, short_sizes, price_tiers from public.miami_event`
       const groups = await tx`
         select g.grp, g.label, g.cap, g.starts_on, g.ends_on, to_char(g.daily_start_time, 'HH24:MI') as daily_start_time,
                to_char(g.daily_end_time, 'HH24:MI') as daily_end_time, g.reserved_for_code_holders, g.reserved_until,
-               g.price_code_holder_cents, g.price_public_cents, g.open, a.code_taken + a.public_taken as taken
+               g.price_code_holder_cents, g.price_public_cents, g.open, g.age_min, g.age_max, a.code_taken + a.public_taken as taken
           from public.miami_groups g join public.miami_availability() a on a.grp = g.grp order by g.grp`
       const codes = await tx`select id, label, grp, active, ends_at, created_at from public.access_codes order by created_at desc`
       const waivers = await tx`select id, flow, version, title, body, url, active, created_at from public.waivers order by flow, version desc`
@@ -100,6 +100,7 @@ const CampInput = z.object({
   description: nullableText(2000),
   infoUrl: z.union([z.url(), z.literal(""), z.null()]).transform((v) => v || null),
   sortOrder: z.int().min(0).max(999).default(0),
+  siteRoute: nullableText(120).optional(),
 })
 
 const campSave: Handler = async (req, deps) => {
@@ -109,15 +110,15 @@ const campSave: Handler = async (req, deps) => {
     if (c.id) {
       const rows = await tx`
         update public.camps set name = ${c.name}, host = ${c.host}, kind = ${c.kind}, info_only = ${c.infoOnly}, active = ${c.active},
-               description = ${c.description}, info_url = ${c.infoUrl}, sort_order = ${c.sortOrder}
+               description = ${c.description}, info_url = ${c.infoUrl}, sort_order = ${c.sortOrder}, site_route = ${c.siteRoute ?? null}
          where id = ${c.id} and kind <> 'miami' returning id`
       if (!rows.length) throw new ApiError(404, "not_found", "Camp not found.")
       return c.id
     }
     const slug = await uniqueSlug(tx, slugify(c.name), "camps")
     const [row] = await tx`
-      insert into public.camps (slug, name, host, kind, info_only, active, description, info_url, sort_order)
-      values (${slug}, ${c.name}, ${c.host}, ${c.kind}, ${c.infoOnly}, ${c.active}, ${c.description}, ${c.infoUrl}, ${c.sortOrder})
+      insert into public.camps (slug, name, host, kind, info_only, active, description, info_url, sort_order, site_route)
+      values (${slug}, ${c.name}, ${c.host}, ${c.kind}, ${c.infoOnly}, ${c.active}, ${c.description}, ${c.infoUrl}, ${c.sortOrder}, ${c.siteRoute ?? null})
       returning id`
     return row!.id as string
   })
@@ -143,6 +144,7 @@ const SessionInput = z
     infoText: nullableText(2000),
     reminderDays: z.array(z.int().min(0).max(60)).max(5),
     sortOrder: z.int().min(0).max(999).default(0),
+    closesAt: z.iso.datetime({ offset: true }).nullable().default(null),
   })
   .refine((s) => !s.endsOn || !s.startsOn || s.endsOn >= s.startsOn, { message: "End date must be on or after the start date", path: ["endsOn"] })
   .refine((s) => s.ageMax === null || s.ageMin === null || s.ageMax >= s.ageMin, { message: "Max age must be at least the min age", path: ["ageMax"] })
@@ -166,7 +168,8 @@ const sessionSave: Handler = async (req, deps) => {
         update public.sessions set name = ${values.name}, starts_on = ${values.starts_on}, ends_on = ${values.ends_on}, start_time = ${values.start_time},
                location = ${values.location}, age_min = ${values.age_min}, age_max = ${values.age_max}, price_cents = ${values.price_cents},
                early_bird_price_cents = ${values.early_bird_price_cents}, early_bird_until = ${values.early_bird_until}, capacity = ${values.capacity},
-               status = ${values.status}, info_text = ${values.info_text}, reminder_days = ${values.reminder_days}, sort_order = ${values.sort_order}
+               status = ${values.status}, info_text = ${values.info_text}, reminder_days = ${values.reminder_days}, sort_order = ${values.sort_order},
+               closes_at = ${s.closesAt}
          where id = ${s.id} and camp_id = ${s.campId} returning id`
       if (!rows.length) throw new ApiError(404, "not_found", "Session not found.")
       return s.id
@@ -174,10 +177,10 @@ const sessionSave: Handler = async (req, deps) => {
     const slug = await uniqueSlug(tx, slugify(s.name), "sessions", s.campId)
     const [row] = await tx`
       insert into public.sessions (camp_id, slug, name, starts_on, ends_on, start_time, location, age_min, age_max, price_cents,
-                                   early_bird_price_cents, early_bird_until, capacity, status, info_text, reminder_days, sort_order)
+                                   early_bird_price_cents, early_bird_until, capacity, status, info_text, reminder_days, sort_order, closes_at)
       values (${s.campId}, ${slug}, ${values.name}, ${values.starts_on}, ${values.ends_on}, ${values.start_time}, ${values.location},
               ${values.age_min}, ${values.age_max}, ${values.price_cents}, ${values.early_bird_price_cents}, ${values.early_bird_until},
-              ${values.capacity}, ${values.status}, ${values.info_text}, ${values.reminder_days}, ${values.sort_order})
+              ${values.capacity}, ${values.status}, ${values.info_text}, ${values.reminder_days}, ${values.sort_order}, ${s.closesAt})
       returning id`
     return row!.id as string
   })
@@ -205,6 +208,7 @@ const MiamiInput = z.object({
     positions: z.array(z.string().trim().min(1).max(40)).max(30),
     shirtSizes: z.array(z.string().trim().min(1).max(16)).max(30),
     shortSizes: z.array(z.string().trim().min(1).max(16)).max(30),
+    priceTiers: z.array(z.object({ until: datetime, cents })).max(6).default([]),
   }),
   groups: z
     .array(
@@ -212,6 +216,8 @@ const MiamiInput = z.object({
         grp: z.enum(["boys", "girls"]),
         label: z.string().trim().min(1).max(40),
         cap: z.int().min(0).max(10_000),
+        ageMin: z.int().min(0).max(25).nullable().default(null),
+        ageMax: z.int().min(0).max(25).nullable().default(null),
         startsOn: isoDate.nullable(),
         endsOn: isoDate.nullable(),
         dailyStartTime: hhmm.nullable(),
@@ -242,13 +248,14 @@ const miamiSave: Handler = async (req, deps) => {
       update public.miami_event set name = ${e.name}, location = ${e.location}, info_text = ${e.infoText}, opens_at = ${e.opensAt},
              public_opens_at = ${e.publicOpensAt}, closes_at = ${e.closesAt}, checkout_open = ${e.checkoutOpen}, waiver_required = ${e.waiverRequired},
              reserved_total = ${e.reservedTotal}, reserved_until = ${e.reservedUntil}, positions = ${e.positions},
-             shirt_sizes = ${e.shirtSizes}, short_sizes = ${e.shortSizes}, starts_on = ${dates[0] ?? null}, ends_on = ${dates.at(-1) ?? null}`
+             shirt_sizes = ${e.shirtSizes}, short_sizes = ${e.shortSizes}, starts_on = ${dates[0] ?? null}, ends_on = ${dates.at(-1) ?? null},
+             price_tiers = ${tx.json(e.priceTiers)}`
     for (const g of groups) {
       await tx`
         update public.miami_groups set label = ${g.label}, cap = ${g.cap}, starts_on = ${g.startsOn}, ends_on = ${g.endsOn},
                daily_start_time = ${g.dailyStartTime}, daily_end_time = ${g.dailyEndTime}, reserved_for_code_holders = ${g.reservedForCodeHolders},
                reserved_until = ${g.reservedUntil}, price_code_holder_cents = ${g.priceCodeHolderCents}, price_public_cents = ${g.pricePublicCents},
-               open = ${g.open}
+               open = ${g.open}, age_min = ${g.ageMin}, age_max = ${g.ageMax}
          where grp = ${g.grp}`
     }
   })
@@ -471,7 +478,15 @@ const revenue: Handler = async (req, deps) => {
                 sum(l.net + l.discount)::int as gross_cents, sum(l.discount)::int as discount_cents,
                 sum(l.refund)::int as refund_cents, sum(l.net - l.refund)::int as net_cents
            from l join public.camps c on c.id = l.camp_id left join public.sessions s on s.id = l.session_id
-          group by 1, 2, 3 order by net_cents desc`,
+          group by 1, 2, 3
+         union all
+         select 'Private training – ' || t.package_name, null, null, count(*)::int,
+                sum(p.amount_subtotal_cents)::int, sum(p.discount_cents)::int, sum(p.refunded_cents)::int,
+                sum(p.amount_total_cents - p.refunded_cents)::int
+           from public.training_purchases t join public.payments p on p.id = t.payment_id
+          where ${where}
+          group by t.package_name
+         order by 8 desc`,
         params,
       )
       const payments = await tx.unsafe(
@@ -483,7 +498,8 @@ const revenue: Handler = async (req, deps) => {
                    'price_cents', r.price_cents, 'discount_cents', r.discount_cents, 'status', r.status) order by r.line_no)
                    from public.registrations r join public.camps c on c.id = r.camp_id left join public.sessions s on s.id = r.session_id
                   where r.payment_id = p.id), '[]') as registrations,
-                (select min(r.parent_name) from public.registrations r where r.payment_id = p.id) as family
+                coalesce((select min(r.parent_name) from public.registrations r where r.payment_id = p.id),
+                         (select t.parent_name || ' (private training)' from public.training_purchases t where t.payment_id = p.id)) as family
            from public.payments p where ${where} order by p.created_at desc limit 2000`,
         params,
       )

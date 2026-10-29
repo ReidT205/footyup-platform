@@ -7,11 +7,22 @@ export interface CheckoutLine {
   quantity: number;
 }
 
+/** Extra questions Stripe Checkout asks (Stripe allows up to 3). Dropdown values come back as `opt<index>`. */
+export interface CheckoutCustomField {
+  key: string;
+  label: string;
+  options?: string[];
+}
+
 export interface CreateCheckoutInput {
   intentId: string;
-  flow: "camp" | "miami";
+  flow: "camp" | "miami" | "training";
   lines: CheckoutLine[];
-  customerEmail: string;
+  /** When unknown, Stripe asks for it. */
+  customerEmail?: string;
+  /** Ask for a phone number on the Stripe page (the site's camp form doesn't). */
+  collectPhone?: boolean;
+  customFields?: CheckoutCustomField[];
   successUrl: string;
   cancelUrl: string;
   expiresAt: Date;
@@ -76,7 +87,19 @@ export class StripeGateway implements PaymentsGateway {
             product_data: { name: line.name },
           },
         })),
-        customer_email: input.customerEmail,
+        ...(input.customerEmail ? { customer_email: input.customerEmail } : {}),
+        ...(input.collectPhone ? { phone_number_collection: { enabled: true } } : {}),
+        ...(input.customFields?.length
+          ? {
+              custom_fields: input.customFields.slice(0, 3).map((f) => ({
+                key: f.key,
+                label: { type: "custom" as const, custom: f.label.slice(0, 50) },
+                ...(f.options
+                  ? { type: "dropdown" as const, dropdown: { options: f.options.slice(0, 200).map((o, i) => ({ label: o.slice(0, 100), value: `opt${i}` })) } }
+                  : { type: "text" as const }),
+              })),
+            }
+          : {}),
         client_reference_id: input.intentId,
         metadata,
         payment_intent_data: { metadata },
@@ -158,7 +181,16 @@ export class MockGateway implements PaymentsGateway {
       payment_intent: s.status === "complete" ? s.paymentIntentId : null,
       client_reference_id: s.input.intentId,
       metadata: { intent_id: s.input.intentId, flow: s.input.flow },
-      customer_details: { email: s.input.customerEmail },
+      customer_details: {
+        email: s.input.customerEmail ?? "stripe-asked@example.test",
+        name: s.input.customerEmail ? null : "Stripe Customer",
+        phone: s.input.collectPhone ? "+16175550199" : null,
+      },
+      custom_fields: (s.input.customFields ?? []).map((f) =>
+        f.options
+          ? { key: f.key, type: "dropdown", dropdown: { value: "opt1" } }
+          : { key: f.key, type: "text", text: { value: f.key.includes("phone") ? "617-555-0123" : f.key.includes("age") ? "12" : "Mock Answer" } },
+      ),
     };
   }
 

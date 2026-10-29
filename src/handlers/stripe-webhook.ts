@@ -3,19 +3,20 @@ import type { Deps } from "../lib/deps.js";
 import { json, logError } from "../lib/http.js";
 import { sendConfirmations } from "../email/automatic.js";
 import { processWaitlistsQuietly } from "../lib/waitlist.js";
+import { legacyRegistration } from "../lib/site-legacy.js";
 import { WebhookSignatureError, type WebhookEvent } from "../lib/payments.js";
 import type { WaiverRecord } from "../lib/waiver.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-interface IntentPayload {
+export interface IntentPayload {
   parent: {
     name: string;
     firstName?: string;
     lastName?: string;
     email: string;
-    phone: string;
-    emergencyPhone?: string;
+    phone: string | null;
+    emergencyPhone?: string | null;
     town: string;
   };
   marketingOptIn: boolean;
@@ -42,7 +43,7 @@ interface IntentPayload {
       position?: string;
       club?: string;
       shirtSize?: string;
-      shortSize?: string;
+      shortSize?: string | null;
       shippingAddress?: { line1: string; line2?: string; city: string; state: string; postalCode: string };
       extra: Record<string, unknown>;
     };
@@ -56,6 +57,7 @@ export type WebhookResult =
   | "already_completed"
   | "awaiting_payment"
   | "legacy_payment_recorded"
+  | "training_recorded"
   | "payload_missing"
   | "released"
   | "refund_recorded"
@@ -82,6 +84,65 @@ async function insertPayment(tx: Db, session: Record<string, any>, intentId: str
   return row!.id;
 }
 
+/** Answers to questions Stripe Checkout asked (see CheckoutCustomField); dropdowns map back to their labels. */
+function customFieldValues(session: Record<string, any>, defs: { key: string; options?: string[] }[] = []): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const f of (session.custom_fields ?? []) as any[]) {
+    let v: unknown = f.type === "dropdown" ? f.dropdown?.value : f.type === "numeric" ? f.numeric?.value : f.text?.value;
+    const def = defs.find((d) => d.key === f.key);
+    if (def?.options && typeof v === "string" && /^opt\d+$/.test(v)) v = def.options[Number(v.slice(3))] ?? v;
+    if (v !== undefined && v !== null && String(v).trim()) out[f.key] = String(v).trim();
+  }
+  return out;
+}
+
+async function insertRegistrations(tx: Db, opts: { intentId: string; paymentId: string; viaCode: boolean; payload: IntentPayload; session: Record<string, any> }) {
+  const { payload, session } = opts;
+  const answers = customFieldValues(session, (payload as any).customFields);
+  const parent = { ...payload.parent, phone: payload.parent.phone || session.customer_details?.phone || null };
+  const emergency = parent.emergencyPhone ?? answers.emergency_phone ?? null;
+  const { waiver } = payload;
+  for (const line of payload.lines) {
+    const p = line.player;
+    const addr = p.shippingAddress;
+    await tx`
+      insert into public.registrations (
+        intent_id, line_no, payment_id, camp_id, session_id, miami_group, via_access_code,
+        parent_name, parent_first_name, parent_last_name, parent_email, parent_phone, emergency_phone, parent_town,
+        player_name, player_first_name, player_last_name, player_age, player_sex, player_email,
+        player_height_in, player_weight_lb, player_position, player_club, shirt_size, short_size,
+        ship_line1, ship_line2, ship_city, ship_state, ship_postal_code, extra,
+        waiver_status, waiver_id, waiver_accepted_at, waiver_accepted_name, price_cents, discount_cents
+      ) values (
+        ${opts.intentId}, ${line.lineNo}, ${opts.paymentId}, ${line.campId}, ${line.sessionId ?? null}, ${line.miamiGroup ?? null},
+        ${opts.viaCode},
+        ${parent.name}, ${parent.firstName ?? null}, ${parent.lastName ?? null}, ${parent.email}, ${parent.phone},
+        ${line.miamiGroup ? emergency : (parent.emergencyPhone ?? null)}, ${parent.town},
+        ${p.name}, ${p.firstName ?? null}, ${p.lastName ?? null}, ${p.age}, ${p.sex ?? null}, ${p.email ?? null},
+        ${p.heightIn ?? null}, ${p.weightLb ?? null}, ${p.position ?? null}, ${p.club ?? null},
+        ${p.shirtSize ?? null}, ${p.shortSize ?? (line.miamiGroup ? (answers.short_size ?? null) : null)},
+        ${addr?.line1 ?? null}, ${addr?.line2 ?? null}, ${addr?.city ?? null}, ${addr?.state ?? null}, ${addr?.postalCode ?? null},
+        ${tx.json({ ...payload.extra, ...p.extra } as never)},
+        ${waiver.status}, ${waiver.waiverId}, ${waiver.acceptedAt}, ${waiver.acceptedName},
+        ${line.priceCents ?? null}, ${line.discountCents ?? 0}
+      )
+      on conflict (intent_id, line_no) do nothing`;
+  }
+  await tx`select public.upsert_contact(${parent.email}, ${parent.name}, ${parent.phone}, ${parent.town},
+                                        'registration', ${payload.marketingOptIn ? "granted" : null})`;
+}
+
+async function recordTraining(tx: Db, session: Record<string, any>, paymentId: string, pkg: { id: string; name: string }, defs: { key: string; options?: string[] }[] = []) {
+  const answers = customFieldValues(session, defs);
+  const c = session.customer_details ?? {};
+  await tx`
+    insert into public.training_purchases (payment_id, package_id, package_name, parent_name, email, phone, player_name, player_age)
+    values (${paymentId}, ${pkg.id}, ${pkg.name}, ${c.name ?? null}, ${c.email ?? session.customer_email ?? null}, ${c.phone ?? null},
+            ${answers.player_name ?? null}, ${answers.player_age ?? null})
+    on conflict (payment_id) do nothing`;
+  if (c.email) await tx`select public.upsert_contact(${c.email}, ${c.name ?? null}, ${c.phone ?? null}, null, 'private_training', null)`;
+}
+
 async function completeCheckout(tx: Db, session: Record<string, any>): Promise<WebhookResult> {
   const intentId: string | undefined = session.metadata?.intent_id ?? session.client_reference_id ?? undefined;
 
@@ -97,14 +158,32 @@ async function completeCheckout(tx: Db, session: Record<string, any>): Promise<W
 
   const [intent] =
     intentId && UUID.test(intentId)
-      ? await tx<{ id: string; status: string; via_access_code: boolean; payload: IntentPayload | null }[]>`
-          select id, status, via_access_code, payload from public.checkout_intents where id = ${intentId} for update`
+      ? await tx<{ id: string; flow: string; status: string; via_access_code: boolean; payload: IntentPayload | null }[]>`
+          select id, flow, status, via_access_code, payload from public.checkout_intents where id = ${intentId} for update`
       : [];
 
   if (!intent) {
-    // A session from the legacy api/checkout.js. Keep the payment so nothing is lost.
-    await insertPayment(tx, session, null, true);
-    return "legacy_payment_recorded";
+    // Checkouts started by the site's original api/checkout.js and
+    // api/checkout-training.js carry the form in Stripe metadata.
+    const md = session.metadata ?? {};
+    if (md.package_id) {
+      const paymentId = await insertPayment(tx, session, null, true);
+      await recordTraining(tx, session, paymentId, { id: String(md.package_id), name: String(md.package_name ?? md.package_id) });
+      return "training_recorded";
+    }
+    const legacy = await legacyRegistration(tx, session);
+    if (!legacy) {
+      await insertPayment(tx, session, null, true);
+      return "legacy_payment_recorded";
+    }
+    const [synthetic] = await tx<{ id: string }[]>`
+      insert into public.checkout_intents (flow, status, via_access_code, amount_cents, stripe_session_id, expires_at, completed_at)
+      values (${legacy.flow}, 'completed', ${legacy.viaCode}, ${Number(session.amount_total ?? 0)}, ${session.id}, now(), now())
+      on conflict (stripe_session_id) do update set status = 'completed'
+      returning id`;
+    const paymentId = await insertPayment(tx, session, synthetic!.id, true);
+    await insertRegistrations(tx, { intentId: synthetic!.id, paymentId, viaCode: legacy.viaCode, payload: legacy.payload, session });
+    return "registered";
   }
   if (intent.status === "completed") return "already_completed";
 
@@ -114,6 +193,14 @@ async function completeCheckout(tx: Db, session: Record<string, any>): Promise<W
     logError("webhook.payload_missing", { name: "PayloadMissing", code: intent.id });
     return "payload_missing";
   }
+
+  if (intent.flow === "training") {
+    const t = payload as unknown as { packageId: string; packageName: string; customFields?: { key: string; options?: string[] }[] };
+    await recordTraining(tx, session, paymentId, { id: t.packageId, name: t.packageName }, t.customFields);
+    await tx`update public.checkout_intents set status = 'completed', completed_at = now(), payload = null where id = ${intent.id}`;
+    return "training_recorded";
+  }
+
   if (payload.pricing) {
     const p = payload.pricing;
     await tx`
@@ -125,41 +212,12 @@ async function completeCheckout(tx: Db, session: Record<string, any>): Promise<W
        where id = ${paymentId}`;
   }
 
-  const { parent, waiver } = payload;
-  for (const line of payload.lines) {
-    const p = line.player;
-    const addr = p.shippingAddress;
-    await tx`
-      insert into public.registrations (
-        intent_id, line_no, payment_id, camp_id, session_id, miami_group, via_access_code,
-        parent_name, parent_first_name, parent_last_name, parent_email, parent_phone, emergency_phone, parent_town,
-        player_name, player_first_name, player_last_name, player_age, player_sex, player_email,
-        player_height_in, player_weight_lb, player_position, player_club, shirt_size, short_size,
-        ship_line1, ship_line2, ship_city, ship_state, ship_postal_code, extra,
-        waiver_status, waiver_id, waiver_accepted_at, waiver_accepted_name, price_cents, discount_cents
-      ) values (
-        ${intent.id}, ${line.lineNo}, ${paymentId}, ${line.campId}, ${line.sessionId ?? null}, ${line.miamiGroup ?? null},
-        ${intent.via_access_code},
-        ${parent.name}, ${parent.firstName ?? null}, ${parent.lastName ?? null}, ${parent.email}, ${parent.phone},
-        ${parent.emergencyPhone ?? null}, ${parent.town},
-        ${p.name}, ${p.firstName ?? null}, ${p.lastName ?? null}, ${p.age}, ${p.sex ?? null}, ${p.email ?? null},
-        ${p.heightIn ?? null}, ${p.weightLb ?? null}, ${p.position ?? null}, ${p.club ?? null},
-        ${p.shirtSize ?? null}, ${p.shortSize ?? null},
-        ${addr?.line1 ?? null}, ${addr?.line2 ?? null}, ${addr?.city ?? null}, ${addr?.state ?? null}, ${addr?.postalCode ?? null},
-        ${tx.json({ ...payload.extra, ...p.extra } as never)},
-        ${waiver.status}, ${waiver.waiverId}, ${waiver.acceptedAt}, ${waiver.acceptedName},
-        ${line.priceCents ?? null}, ${line.discountCents ?? 0}
-      )
-      on conflict (intent_id, line_no) do nothing`;
-  }
-
+  await insertRegistrations(tx, { intentId: intent.id, paymentId, viaCode: intent.via_access_code, payload, session });
   await tx`update public.holds set status = 'converted' where intent_id = ${intent.id} and status = 'active'`;
   if (payload.waitlistEntryId) {
     await tx`update public.waitlist_entries set status = 'converted', converted_at = now(), offer_token = null where id = ${payload.waitlistEntryId}`;
   }
   await tx`update public.checkout_intents set status = 'completed', completed_at = now(), payload = null where id = ${intent.id}`;
-  await tx`select public.upsert_contact(${parent.email}, ${parent.name}, ${parent.phone}, ${parent.town},
-                                        'registration', ${payload.marketingOptIn ? "granted" : null})`;
   return "registered";
 }
 

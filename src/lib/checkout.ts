@@ -2,7 +2,7 @@ import type { CheckoutResponse } from "../contract.js";
 import { capacityError, type Db } from "./db.js";
 import type { Deps } from "./deps.js";
 import { ApiError, logError } from "./http.js";
-import type { CheckoutLine } from "./payments.js";
+import type { CheckoutCustomField, CheckoutLine } from "./payments.js";
 
 /** Holds outlive the Stripe session by this much, so a payment can never complete after its hold lapses. */
 const HOLD_GRACE_MS = 5 * 60_000;
@@ -10,11 +10,13 @@ const HOLD_GRACE_MS = 5 * 60_000;
 const MIN_STRIPE_MINUTES = 31;
 
 export interface StartCheckoutOptions {
-  flow: "camp" | "miami";
+  flow: "camp" | "miami" | "training";
   payload: Record<string, unknown>;
   viaAccessCode: boolean;
   lines: CheckoutLine[];
-  customerEmail: string;
+  customerEmail?: string;
+  collectPhone?: boolean;
+  customFields?: CheckoutCustomField[];
   holdMinutes: number;
   successPath: string;
   cancelPath: string;
@@ -68,6 +70,8 @@ export async function startCheckout(deps: Deps, opts: StartCheckoutOptions): Pro
       flow: opts.flow,
       lines: opts.lines,
       customerEmail: opts.customerEmail,
+      collectPhone: opts.collectPhone,
+      customFields: opts.customFields,
       successUrl: withSessionId(env.siteUrl, opts.successPath),
       cancelUrl: new URL(opts.cancelPath, env.siteUrl).toString(),
       expiresAt: stripeExpiresAt,

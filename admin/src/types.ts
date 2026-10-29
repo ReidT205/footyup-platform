@@ -48,7 +48,7 @@ export interface Registration {
   parent_first_name: string | null;
   parent_last_name: string | null;
   parent_email: string;
-  parent_phone: string;
+  parent_phone: string | null;
   emergency_phone: string | null;
   parent_town: string;
   player_name: string;
@@ -91,12 +91,31 @@ export interface TrainingRequest {
   parent_name: string;
   email: string;
   phone: string;
-  town: string;
-  player_name: string;
-  player_age: number;
+  town: string | null;
+  player_name: string | null;
+  player_age: number | null;
   message: string | null;
   preferred_times: string | null;
   status: string;
+  players: string | null;
+  bundle: string | null;
+  player_ages: string | null;
+}
+
+export interface TrainingPurchase {
+  id: string;
+  created_at: string;
+  package_id: string;
+  package_name: string;
+  parent_name: string | null;
+  email: string | null;
+  phone: string | null;
+  player_name: string | null;
+  player_age: string | null;
+  status: string;
+  amount_total_cents: number;
+  refunded_cents: number;
+  payment_status: string;
 }
 
 export interface WaitlistEntry {

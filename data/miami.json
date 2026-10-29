@@ -1,31 +1,38 @@
 {
-  "_note": "From the client's Kickoff Information Form (Alex Rapo, Oct 18, 2026). Edit and run `pnpm miami config`. Still to confirm: spot limits (the form says 'out of all 450' but neither limit box is ticked), whether the 200 reserved spots are shared or split by group and when unused ones release to the public, the location, and the size lists. The access code is never stored here; set it with `pnpm miami code add`.",
+  "_note": "Mirrors the live site (rapobuild api/_camps.js, Oct 29, 2026): Belen Jesuit Prep, 225 boys / 225 girls, ages 14-18, private-school code window Nov 1-30, public from Dec 1, $1,500 through Feb 1 then $1,650, closes end of Mar 1. 200 reserved spots from the Kickoff Form. The access code is set in Dashboard -> Settings -> Access codes, never here.",
   "camp": {
-    "slug": "miami-combine",
-    "name": "FOOTYUP x GOINGFORGOAT College Combine",
-    "host": null
+    "slug": "miami_combine_2027",
+    "name": "FOOTYUP Miami College Combine 2027 — Belen Jesuit Preparatory School",
+    "host": "Belen Jesuit Preparatory School",
+    "siteRoute": "miami"
   },
   "event": {
     "name": "FOOTYUP x GOINGFORGOAT College Combine",
-    "location": "Miami, FL",
-    "infoText": "Players will participate in an elite three-day college soccer combine designed to provide exposure to college coaches, professional athletic performance testing, and high-level competition.\n\nThe combine will feature approximately 20–30 college programs attending each of the boys' and girls' events, giving athletes the opportunity to showcase their abilities in front of college coaches.\n\nEvery registered player will receive an exclusive GOINGFORGOAT x FOOTYUP package, shipped directly to their home before the combine. The package will include exclusive combine apparel, including kits for the combine, and additional player gear.\n\nThroughout the event, athletes will participate in competitive training sessions, small-sided games, full-field matches, and advanced athletic performance testing using VALD technology. Players will have the opportunity to demonstrate their technical ability, athleticism, tactical awareness, and overall potential at the collegiate level.\n\nPlease ensure all registration information, apparel sizing, and shipping details are accurate before submitting.",
-    "opensAt": "2026-11-01T10:00:00-05:00",
-    "publicOpensAt": "2026-11-01T10:00:00-05:00",
-    "closesAt": "2027-03-01T23:59:00-05:00",
+    "location": "Belen Jesuit Preparatory School, 500 SW 127th Ave, Miami, FL",
+    "infoText": "Players will participate in an elite three-day college soccer combine designed to provide exposure to college coaches, professional athletic performance testing, and high-level competition.\n\nThe combine will feature approximately 20–30 college programs attending each of the boys' and girls' events.\n\nEvery registered player will receive an exclusive GOINGFORGOAT x FOOTYUP package, shipped directly to their home before the combine, including combine kits and additional player gear.\n\nAthletes take part in competitive training sessions, small-sided games, full-field matches, and advanced athletic performance testing using VALD technology.",
+    "opensAt": "2026-11-01T00:00:00-04:00",
+    "publicOpensAt": "2026-12-01T00:00:00-05:00",
+    "closesAt": "2027-03-02T00:00:00-05:00",
     "checkoutOpen": true,
     "holdMinutes": 35,
     "waiverRequired": false,
     "reservedTotal": 200,
     "reservedUntil": null,
-    "positions": [],
-    "shirtSizes": [],
-    "shortSizes": []
+    "priceTiers": [
+      { "until": "2027-02-02T00:00:00-05:00", "cents": 150000 },
+      { "until": null, "cents": 165000 }
+    ],
+    "positions": ["Goalkeeper", "Center Back", "Outside Back", "Defensive Midfielder", "Central Midfielder", "Attacking Midfielder", "Winger", "Striker"],
+    "shirtSizes": ["Youth L", "Adult XS", "Adult S", "Adult M", "Adult L", "Adult XL", "Adult XXL"],
+    "shortSizes": ["Youth L", "Adult XS", "Adult S", "Adult M", "Adult L", "Adult XL", "Adult XXL"]
   },
   "groups": [
     {
       "grp": "boys",
       "label": "Boys",
       "cap": 225,
+      "ageMin": 14,
+      "ageMax": 18,
       "startsOn": "2027-05-21",
       "endsOn": "2027-05-23",
       "dailyStartTime": "16:30",
@@ -39,6 +46,8 @@
       "grp": "girls",
       "label": "Girls",
       "cap": 225,
+      "ageMin": 14,
+      "ageMax": 18,
       "startsOn": "2027-05-24",
       "endsOn": "2027-05-26",
       "dailyStartTime": "16:30",

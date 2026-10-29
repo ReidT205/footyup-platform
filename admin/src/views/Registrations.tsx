@@ -198,11 +198,13 @@ function RegistrationSheet({ r, onClose, api, onChanged }: { r: Registration | n
                       <MailIcon /> Email
                     </a>
                   </Button>
-                  <Button variant="outline" size="sm" asChild>
-                    <a href={`tel:${r.parent_phone}`}>
-                      <PhoneIcon /> Call
-                    </a>
-                  </Button>
+                  {r.parent_phone && (
+                    <Button variant="outline" size="sm" asChild>
+                      <a href={`tel:${r.parent_phone}`}>
+                        <PhoneIcon /> Call
+                      </a>
+                    </Button>
+                  )}
                 </div>
               </Section>
               {Object.keys(r.extra ?? {}).length > 0 && (
@@ -284,7 +286,7 @@ export function Registrations({ api, onExpired, refreshKey, params = {} }: { api
     const toTs = to ? new Date(`${to}T23:59:59`).getTime() : null
     const list = rows.filter((r) => {
       if (!showCancelled && r.status === "cancelled") return false
-      if (q && ![r.player_name, r.parent_name, r.parent_email, r.parent_phone, r.player_email ?? ""].some((v) => v.toLowerCase().includes(q))) return false
+      if (q && ![r.player_name, r.parent_name, r.parent_email, r.parent_phone ?? "", r.player_email ?? ""].some((v) => v.toLowerCase().includes(q))) return false
       if (program && programOf(r) !== program) return false
       if (town && r.parent_town.trim().toLowerCase() !== town.trim().toLowerCase()) return false
       if (payment && r.payment_status !== payment) return false

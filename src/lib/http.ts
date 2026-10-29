@@ -47,6 +47,13 @@ export function parse<S extends z.ZodType>(schema: S, data: unknown): z.output<S
 }
 
 export function clientIp(req: Request): string {
+  // The site's own functions call the platform server-to-server, so the
+  // family's IP arrives in a header that's only trusted with the shared key.
+  const siteKey = process.env.SITE_API_KEY;
+  if (siteKey && req.headers.get("x-site-key") === siteKey) {
+    const relayed = req.headers.get("x-footyup-client-ip");
+    if (relayed) return relayed.split(",")[0]!.trim();
+  }
   const forwarded = req.headers.get("x-forwarded-for");
   if (forwarded) return forwarded.split(",")[0]!.trim();
   return req.headers.get("x-real-ip") ?? "unknown";

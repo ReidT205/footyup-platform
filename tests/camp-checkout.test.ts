@@ -100,6 +100,17 @@ describe("POST /api/checkout/camp (acceptance #3)", () => {
     expect(res.status).toBe(404);
   });
 
+  it("rejects ages outside the session range and sessions past their closing time", async () => {
+    const week1 = await sessionBySlug(db, "arlington-catholic", "week-of-july-12");
+    let res = await call(deps, campCheckout, post("/api/checkout/camp", { parent, players: [{ name: "A", age: 15, sessionIds: [week1] }] }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "validation_failed", message: "This session is for ages 6–13." });
+
+    await db`update public.sessions set closes_at = now() - interval '1 minute' where id = ${week1}`;
+    res = await call(deps, campCheckout, post("/api/checkout/camp", { parent, players: [{ name: "A", age: 9, sessionIds: [week1] }] }));
+    expect((await res.json()).error).toBe("session_closed");
+  });
+
   it("returns field-level validation errors", async () => {
     const res = await call(deps, campCheckout, post("/api/checkout/camp", { parent: { ...parent, email: "nope" }, players: [] }));
     expect(res.status).toBe(400);

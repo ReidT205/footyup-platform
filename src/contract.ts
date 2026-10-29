@@ -19,7 +19,7 @@ export const Phone = z
 /** Relative path on the public site, e.g. "/camps/thanks". */
 const SitePath = z
   .string()
-  .regex(/^\/(?!\/)[A-Za-z0-9\-._~/]*$/, "Must be a path on this site, starting with /")
+  .regex(/^\/(?!\/)[A-Za-z0-9\-._~/?=&%]*$/, "Must be a path on this site, starting with /")
   .max(200);
 
 /**
@@ -115,6 +115,7 @@ export const MiamiPlayer = z.object({
   shortSize: text(16),
   /** Only when this player's package ships somewhere other than the family address. */
   shippingAddress: ShippingAddress.optional(),
+  extra: ExtraFields.optional(),
 });
 
 export const AccessCode = z.string().trim().min(1).max(64);

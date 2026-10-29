@@ -37,8 +37,8 @@ export async function resetDb(db: Sql) {
 }
 
 export async function seed(db: Sql) {
-  await upsertCamps(db, CampsFile.parse(JSON.parse(readFileSync("data/camps.json", "utf8"))));
-  await upsertMiami(db, MiamiFile.parse(JSON.parse(readFileSync("data/miami.json", "utf8"))));
+  await upsertCamps(db, CampsFile.parse(JSON.parse(readFileSync("tests/fixtures/camps.json", "utf8"))));
+  await upsertMiami(db, MiamiFile.parse(JSON.parse(readFileSync("tests/fixtures/miami.json", "utf8"))));
 }
 
 export async function countRows(db: Sql, table: string) {
