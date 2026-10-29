@@ -31,7 +31,7 @@ Never in the repo.
 | `EMAIL_FROM`, `EMAIL_FROM_NAME` | Chosen sender (must be verified in Brevo) |
 | `TURNSTILE_SECRET_KEY` | Cloudflare → Turnstile (optional) |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Supabase → Project Settings → API (URL and publishable/anon key) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API (secret key). Scripts only, never on Vercel |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API (secret key). Server-only: Vercel (for Settings → Admins) and scripts; never in the browser or the repo |
 | `PUBLIC_ADMIN_URL` | The deployed dashboard URL, e.g. `https://<api domain>/admin/` |
 | `CORS_ALLOWED_ORIGINS` | The public site's domains, comma-separated |
 | `BREVO_WEBHOOK_SECRET` | Any long random string; also pasted into the Brevo webhook URL |
@@ -85,7 +85,7 @@ Everything below is in the dashboard at `/admin` unless noted.
 | Cancel or restore a registration | Registrations → open it → Cancel registration |
 | Export registrations, contacts, payments, revenue, analytics | "Export CSV" on each page |
 | Revenue reconciliation | Revenue page: Collected and Refunds match Stripe for the same dates (before fees) |
-| Give someone dashboard access | Terminal: `pnpm admins add <email>` |
+| Give someone dashboard access, or take it away | Settings → Admins (or terminal: `pnpm admins add <email>`, `pnpm admins remove <email>`) |
 | Add a camp the site sells | Settings → Camps, with the same camp id and session ids as the site's `src/camps.jsx` |
 | Connect or disconnect the live site | `integration/rapobuild/README.md` (set or remove `PLATFORM_API_URL` on the site) |
 | Import payments Stripe has but the dashboard doesn't | Terminal: `pnpm stripe:backfill --since <date> --apply` |

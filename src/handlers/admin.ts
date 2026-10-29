@@ -4,6 +4,7 @@ import type { Deps } from "../lib/deps.js";
 import { enforceRateLimit } from "../lib/guards.js";
 import { ApiError, json, parse, readJson } from "../lib/http.js";
 import { EMAIL_GET, EMAIL_POST } from "./admin-email.js";
+import { ADMIN_USERS_GET, ADMIN_USERS_POST } from "./admin-users.js";
 import { MANAGE_GET, MANAGE_POST } from "./admin-manage.js";
 
 /** GET /api/admin/config: tells the dashboard how to sign in. Public. */
@@ -141,8 +142,8 @@ async function waitlist(req: Request, deps: Deps) {
   return json({ waitlist: rows });
 }
 
-const GET_VIEWS: Record<string, (req: Request, deps: Deps) => Promise<Response>> = { config, overview, registrations, requests, waitlist, ...EMAIL_GET, ...MANAGE_GET };
-const POST_VIEWS: Record<string, (req: Request, deps: Deps) => Promise<Response>> = { "dev-login": devLogin, ...EMAIL_POST, ...MANAGE_POST };
+const GET_VIEWS: Record<string, (req: Request, deps: Deps) => Promise<Response>> = { config, overview, registrations, requests, waitlist, ...EMAIL_GET, ...MANAGE_GET, ...ADMIN_USERS_GET };
+const POST_VIEWS: Record<string, (req: Request, deps: Deps) => Promise<Response>> = { "dev-login": devLogin, ...EMAIL_POST, ...MANAGE_POST, ...ADMIN_USERS_POST };
 
 /** /api/admin/<view> */
 export async function admin(req: Request, deps: Deps): Promise<Response> {

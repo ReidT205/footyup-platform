@@ -77,7 +77,7 @@ pnpm miami code add <code> --label "Host families" [--ends-at <ISO time>]
 pnpm miami code off                     # turn codes off
 pnpm waiver add --flow miami --title "Participant waiver" --file waiver.txt
 pnpm settings set notify_email '"alex@example.com"'
-pnpm admins add <email>                 # invite a dashboard admin
+pnpm admins add <email>                 # invite a dashboard admin (or Dashboard → Settings → Admins)
 pnpm admins list | remove <email>
 pnpm stripe:backfill --since 2026-09-01 [--apply]   # import payments the site took before the switch
 ```
@@ -115,7 +115,7 @@ Names only. Values go in Vercel project settings, never in the repo.
 | `STRIPE_WEBHOOK_SECRET` | Vercel | Signing secret of the `/api/stripe/webhook` endpoint |
 | `SUPABASE_URL` | Vercel + scripts | Supabase project URL (admin login) |
 | `SUPABASE_ANON_KEY` | Vercel | Supabase publishable/anon key (safe in the browser) |
-| `SUPABASE_SERVICE_ROLE_KEY` | scripts only | Inviting admins. **Never on Vercel.** |
+| `SUPABASE_SERVICE_ROLE_KEY` | Vercel (server-only) + scripts | Sending admin invites, from Settings → Admins or `pnpm admins add`. Server secret: never in the browser or the repo. Without it on Vercel, admins can only be added from the terminal |
 | `PUBLIC_ADMIN_URL` | scripts | Where invite links land, e.g. `https://<api domain>/admin/` |
 | `CORS_ALLOWED_ORIGINS` | Vercel | Site domains allowed to call the API from the browser |
 | `BREVO_WEBHOOK_SECRET` | Vercel | Secret in the Brevo webhook URL (unsubscribe/bounce sync) |
@@ -149,8 +149,9 @@ the switch-over (and unsetting it is the rollback). See
    `https://<api domain>/api/stripe/webhook` for `checkout.session.completed`,
    `checkout.session.expired`, `checkout.session.async_payment_succeeded`,
    `checkout.session.async_payment_failed` and `charge.refunded`. Keep bank-debit methods off.
-4. **Admins:** `pnpm admins add alexdimitrirapo@gmail.com` and Chris's email. Each gets an
-   invite email to choose a password.
+4. **Admins:** `pnpm admins add alexdimitrirapo@gmail.com` for the first admin. Each gets an
+   invite email to choose a password. After that, admins add each other in Settings → Admins
+   (needs `SUPABASE_SERVICE_ROLE_KEY` and `PUBLIC_ADMIN_URL` on Vercel).
 5. **Brevo:** create an API key and verified sender, set `BREVO_API_KEY`, `EMAIL_FROM`, and
    `pnpm settings set notify_email '"..."'`. Send the SPF/DKIM/DMARC records to whoever
    controls the footyupp.net DNS.

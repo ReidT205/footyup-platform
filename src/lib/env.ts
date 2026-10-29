@@ -16,6 +16,10 @@ export interface Env {
   supabaseAnonKey: string | undefined;
   /** Without Supabase configured, local development uses a signed dev login instead. */
   adminAuthMode: "supabase" | "dev" | "unconfigured";
+  /** Server-only Supabase secret key; lets admins invite other admins from the dashboard. */
+  supabaseServiceRoleKey: string | undefined;
+  /** Where Supabase invite links land, e.g. https://<api domain>/admin/ */
+  adminUrl: string | undefined;
   /** Public origin of this API, used for unsubscribe links in emails. */
   apiUrl: string;
   /** Shared secret in the Brevo webhook URL (?token=...). */
@@ -71,6 +75,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     supabaseUrl,
     supabaseAnonKey,
     adminAuthMode,
+    supabaseServiceRoleKey: source.SUPABASE_SERVICE_ROLE_KEY || undefined,
+    adminUrl: source.PUBLIC_ADMIN_URL || undefined,
     databaseUrl: required(source, "DATABASE_URL"),
     siteUrl,
     isProduction,

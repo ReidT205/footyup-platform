@@ -75,7 +75,7 @@ Every requirement in the **Developer Brief (full scope)** and the client's
 | Requirement | Status | Where |
 | --- | --- | --- |
 | At `/admin` | ✅ | |
-| Supabase email + password, no public sign-up, two accounts | ✅ | `pnpm admins add`; turn off sign-ups in Supabase Auth |
+| Supabase email + password, no public sign-up, two accounts | ✅ | Settings → Admins (invite / remove) or `pnpm admins add`; turn off sign-ups in Supabase Auth |
 | Multi-factor authentication ("preferred") | ⬜ | Recommended next; Supabase supports TOTP |
 | Registrations: search, filters (camp, session, town, date, Miami group, payment, waiver), sort, pagination, detail, CSV of all fields | ✅ | Dashboard → Registrations |
 | Training requests, contacts, waitlists: each with search and CSV | ✅ | Dashboard pages |

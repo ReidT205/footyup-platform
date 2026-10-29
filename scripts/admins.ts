@@ -1,5 +1,6 @@
 /**
- * Manage the dashboard admins (the client wants exactly two: Alex and Chris).
+ * Manage the dashboard admins from the terminal. Admins can also do this in
+ * the dashboard: Settings → Admins.
  *
  *   pnpm admins add <email>      Supabase: sends an invite email to set a password, then grants admin.
  *                                Local (no SUPABASE_URL): creates the user locally for the dev login.
@@ -9,66 +10,37 @@
  * Supabase mode needs SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (server secret, never
  * in the browser) and PUBLIC_ADMIN_URL (where the invite link lands, e.g. https://.../admin/).
  */
+import { grantAdmin, listAdmins, revokeAdmin } from "../src/lib/admins.js";
 import { scriptDb } from "./_db.js";
 
 const [command, rawEmail] = process.argv.slice(2);
 const email = rawEmail?.trim().toLowerCase();
 const sql = scriptDb();
+const env = {
+  supabaseUrl: process.env.SUPABASE_URL?.replace(/\/+$/, "") || undefined,
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || undefined,
+  databaseUrl: (process.env.DIRECT_DATABASE_URL || process.env.DATABASE_URL)!,
+  adminUrl: process.env.PUBLIC_ADMIN_URL || undefined,
+};
 
-const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/+$/, "");
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-async function supabaseUserId(target: string): Promise<string> {
-  const headers = { apikey: serviceKey!, authorization: `Bearer ${serviceKey}`, "content-type": "application/json" };
-  const redirect = process.env.PUBLIC_ADMIN_URL;
-  const invite = await fetch(`${supabaseUrl}/auth/v1/invite${redirect ? `?redirect_to=${encodeURIComponent(redirect)}` : ""}`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ email: target }),
-  });
-  if (invite.ok) {
-    const user = (await invite.json()) as { id: string };
-    console.log(`Invite email sent to ${target}. They set their password from the link.`);
-    return user.id;
-  }
-  // Already registered: find the existing user.
-  for (let page = 1; page <= 20; page++) {
-    const res = await fetch(`${supabaseUrl}/auth/v1/admin/users?page=${page}&per_page=200`, { headers });
-    if (!res.ok) throw new Error(`Supabase admin API returned ${res.status}`);
-    const { users } = (await res.json()) as { users: { id: string; email?: string }[] };
-    const found = users.find((u) => u.email?.toLowerCase() === target);
-    if (found) {
-      console.log(`${target} already has a Supabase login; granting admin access.`);
-      return found.id;
-    }
-    if (users.length < 200) break;
-  }
-  throw new Error(`Could not invite or find ${target} (invite returned ${invite.status}).`);
-}
+const MESSAGES = {
+  invited: "Invite email sent. They set their password from the link.",
+  existing_login: "They already had a login; dashboard access granted.",
+  local: "Local user ready. Sign in at /admin/ with the dev login.",
+  already_admin: "Already an admin.",
+};
 
 try {
   if (command === "add" && email) {
-    let userId: string;
-    if (supabaseUrl && serviceKey) {
-      userId = await supabaseUserId(email);
-    } else {
-      const host = new URL((process.env.DIRECT_DATABASE_URL || process.env.DATABASE_URL)!).hostname;
-      if (!["localhost", "127.0.0.1", "::1"].includes(host)) {
-        throw new Error("Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to add admins on a real Supabase project.");
-      }
-      const [existing] = await sql<{ id: string }[]>`select id from auth.users where lower(email) = ${email}`;
-      userId = existing?.id ?? (await sql<{ id: string }[]>`insert into auth.users (email) values (${email}) returning id`)[0]!.id;
-      console.log(`Local user ready for ${email}. Sign in at /admin/ with the dev login.`);
-    }
-    await sql`insert into public.admin_users (user_id, email) values (${userId}, ${email})
-              on conflict (user_id) do update set email = excluded.email`;
+    const { result } = await grantAdmin(sql, env, email, "terminal");
     const [{ n }] = (await sql<{ n: number }[]>`select count(*)::int as n from public.admin_users`) as [{ n: number }];
-    console.log(`${email} is an admin. Admins now: ${n}.`);
+    console.log(`${email}: ${MESSAGES[result]} Admins now: ${n}.`);
   } else if (command === "list") {
-    console.table(await sql`select email, created_at from public.admin_users order by created_at`);
+    console.table((await listAdmins(sql, env)).map((a) => ({ email: a.email, added: a.createdAt, by: a.invitedBy ?? "", status: a.status ?? "" })));
   } else if (command === "remove" && email) {
-    const rows = await sql`delete from public.admin_users where lower(email) = ${email} returning email`;
-    console.log(rows.length ? `${email} no longer has dashboard access.` : `${email} was not an admin.`);
+    const [row] = await sql<{ user_id: string }[]>`select user_id from public.admin_users where lower(email) = ${email}`;
+    if (!row) console.log(`${email} was not an admin.`);
+    else console.log(`${await revokeAdmin(sql, row.user_id, null)} no longer has dashboard access.`);
   } else {
     console.error("Usage: pnpm admins add|remove <email> | list");
     process.exit(1);

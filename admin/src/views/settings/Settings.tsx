@@ -6,6 +6,7 @@ import { PillTabs } from "@/components/app/kit"
 import { ErrorState, PageHeader } from "@/components/app/states"
 import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { AdminSettings } from "./AdminSettings"
 import { CampsSettings } from "./CampsSettings"
 import { DiscountSettings } from "./DiscountSettings"
 import { EmailSettings } from "./EmailSettings"
@@ -13,7 +14,7 @@ import { AccessCodes, MiamiSettings } from "./MiamiSettings"
 import type { SettingsData } from "./types"
 import { WaiverSettings } from "./WaiverSettings"
 
-type Section = "camps" | "miami" | "codes" | "discounts" | "waivers" | "email"
+type Section = "camps" | "miami" | "codes" | "discounts" | "waivers" | "email" | "admins"
 const SECTIONS: { value: Section; label: string }[] = [
   { value: "camps", label: "Camps & sessions" },
   { value: "miami", label: "Miami combine" },
@@ -21,6 +22,7 @@ const SECTIONS: { value: Section; label: string }[] = [
   { value: "discounts", label: "Discounts & promo codes" },
   { value: "waivers", label: "Waivers" },
   { value: "email", label: "Email" },
+  { value: "admins", label: "Admins" },
 ]
 
 export function Settings({ api, onExpired, refreshKey, params }: { api: Api; onExpired: () => void; refreshKey: number; params: Record<string, string> }) {
@@ -30,10 +32,12 @@ export function Settings({ api, onExpired, refreshKey, params }: { api: Api; onE
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Settings" description="Change prices, spots, dates, codes, discounts, waivers and email without a developer. Changes apply to new checkouts right away." />
+      <PageHeader title="Settings" description="Change prices, spots, dates, codes, discounts, waivers, email and who can sign in, without a developer. Changes apply to new checkouts right away." />
       <PillTabs id="settings" value={section} onChange={setSection} options={SECTIONS} />
       {section === "email" ? (
         <EmailSettings api={api} onExpired={onExpired} />
+      ) : section === "admins" ? (
+        <AdminSettings api={api} onExpired={onExpired} />
       ) : loading && !data ? (
         <Skeleton className="h-96 rounded-xl" />
       ) : error && !data ? (
