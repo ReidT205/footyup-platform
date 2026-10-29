@@ -3,7 +3,7 @@
 Every requirement in the **Developer Brief (full scope)** and the client's
 **Kickoff Information Form**, mapped to where it lives. Status key:
 
-- ✅ built and covered by automated tests (`pnpm test`, 90 tests)
+- ✅ built and covered by automated tests (`pnpm test`, 106 tests)
 - 🟡 built; needs client info or a live account to finish
 - 🔷 Ivy Devs' part (public pages); the API it needs is ready
 - ⬜ not built yet
@@ -204,15 +204,30 @@ Every requirement in the **Developer Brief (full scope)** and the client's
 | Spot limits (250/250 vs 450 total) | 🟡 Question 1 |
 | Access code | ✅ Set by Ivy Devs in Settings → Access codes (never stored in the repo) |
 | Arlington Catholic pairing | ✅ |
-| Watertown dates/booking | 🟡 |
+| Watertown dates/booking | ✅ From the live site: $415 per week, both weeks $830 (two registrations) |
 | BB&N info only | ✅ |
 | Contact list, mailing address, consent description | 🟡 Section D blank |
 | Accounts in the client's name with invites | 🟡 Form shows invites failed; a password was written instead (don't use it) |
 | Stage 1 checklist by Oct 28 | ✅ `docs/stage-1-checklist.md` |
 
-## What Ivy Devs' pages need (🔷)
+## The live site (footyupp.net, repo `rapobuild`)
 
-All shapes are in `docs/api-contract.md`.
+| Requirement | Status |
+| --- | --- |
+| Site's camp and Miami forms save to Supabase and show in the dashboard | ✅ `/api/site/checkout`; patch in `integration/rapobuild/` |
+| Miami access-code gate uses the dashboard's codes and schedule | ✅ `/api/site/camp-access` |
+| Private training packages bought on the site show in the dashboard | ✅ Training → Packages bought; Revenue |
+| Private training inquiries save, add a contact and email the coaches | ✅ `/api/site/inquiry` (replaces Telegram; Telegram stays as the fallback) |
+| Site prices follow the dashboard | ✅ `/api/site/catalog` |
+| Payments from the site's current checkout reach the dashboard before the switch | ✅ Webhook reads the site's Stripe metadata; `pnpm stripe:backfill` imports earlier ones |
+| Fields the site doesn't collect (camp phone; Miami emergency phone, short size) | ✅ Asked on the Stripe checkout page |
+| Stripe promotion codes keep working, and discounts reconcile per program | ✅ |
+| Switch-over and rollback without touching the pages | 🟡 `PLATFORM_API_URL` on the site's Vercel project, after Stage 1 sign-off |
+
+## Other front ends (🔷)
+
+The site above uses `/api/site/*`. A new or rebuilt front end can use the general
+API instead; all shapes are in `docs/api-contract.md`.
 
 1. Camp pages: `GET /api/camps`, then `POST /api/checkout/camp`. Show info-only camps without checkout, and the waiver checkbox when `waiverRequired`. Add an optional promo code field and a "send me Footy Up news" checkbox (`marketingOptIn`). Show the waitlist form when a session is `full`.
 2. Miami page: `GET /api/miami`, then `POST /api/miami/checkout` with every Kickoff Form field. Show the access-code field (required/optional per `accessCodeRequired`/`accessCodeAccepted`), dropdowns when option lists exist, and the waitlist when a group is `full`.

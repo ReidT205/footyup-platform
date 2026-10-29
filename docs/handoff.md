@@ -37,6 +37,7 @@ Never in the repo.
 | `BREVO_WEBHOOK_SECRET` | Any long random string; also pasted into the Brevo webhook URL |
 | `CRON_SECRET` | Any long random string; Vercel sends it to cron routes |
 | `RATE_LIMIT_SALT` | Any long random string |
+| `SITE_API_KEY` | Any long random string; the same value on the site's Vercel project (`integration/rapobuild/`) |
 
 ## Packages
 
@@ -85,6 +86,9 @@ Everything below is in the dashboard at `/admin` unless noted.
 | Export registrations, contacts, payments, revenue, analytics | "Export CSV" on each page |
 | Revenue reconciliation | Revenue page: Collected and Refunds match Stripe for the same dates (before fees) |
 | Give someone dashboard access | Terminal: `pnpm admins add <email>` |
+| Add a camp the site sells | Settings → Camps, with the same camp id and session ids as the site's `src/camps.jsx` |
+| Connect or disconnect the live site | `integration/rapobuild/README.md` (set or remove `PLATFORM_API_URL` on the site) |
+| Import payments Stripe has but the dashboard doesn't | Terminal: `pnpm stripe:backfill --since <date> --apply` |
 | Restore a backup | Supabase → Database → Backups → choose a point in time → Restore (Pro plan). Restoring replaces the whole database, so export recent registrations first. |
 
 ## Handoff checklist (Agreement §10)
